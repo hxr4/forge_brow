@@ -52,6 +52,8 @@ enum Trays {
     }
 
     private static let key = "forge.trays"
+    private static var cache: [Tray]?
+    private(set) static var revision = 0
 
     static let defaults: [Tray] = [
         Tray(name: "Dev", sites: [
@@ -76,21 +78,27 @@ enum Trays {
 
     static var all: [Tray] {
         get {
+            if let cache { return cache }
             guard let data = UserDefaults.standard.data(forKey: key),
                   let decoded = try? JSONDecoder().decode([Tray].self, from: data) else {
+                cache = defaults
                 return defaults
             }
+            cache = decoded
             return decoded
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             UserDefaults.standard.set(data, forKey: key)
+            cache = newValue
+            revision += 1
         }
     }
 }
 
 enum PinnedSites {
     private static let key = "forge.pinnedSites"
+    private static var cache: [Site]?
 
     struct Site: Codable, Equatable {
         var title: String
@@ -106,15 +114,19 @@ enum PinnedSites {
 
     static var all: [Site] {
         get {
+            if let cache { return cache }
             guard let data = UserDefaults.standard.data(forKey: key),
                   let decoded = try? JSONDecoder().decode([Site].self, from: data) else {
+                cache = defaults
                 return defaults
             }
+            cache = decoded
             return decoded
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             UserDefaults.standard.set(data, forKey: key)
+            cache = newValue
         }
     }
 }
