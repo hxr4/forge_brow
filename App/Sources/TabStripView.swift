@@ -71,6 +71,7 @@ final class TabStripView: NSView {
             }
             view.apply(
                 title: tab.displayTitle,
+                favicon: tab.favicon,
                 active: index == selectedIndex,
                 bypass: tab.hasActiveBypass,
                 busy: tab.isLoading

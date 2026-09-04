@@ -632,11 +632,22 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     func browserView(_ view: FGBrowserView, didChangeURL url: String) {
         guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
         tab.url = url
+        if tab.favicon == nil, let cached = FaviconStore.shared.icon(for: url) {
+            tab.favicon = cached
+            tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+        }
         if tab === selectedTab { updateToolbarState() }
     }
 
     func browserView(_ view: FGBrowserView, didUpdateFindMatchCount count: Int, active activeOrdinal: Int) {
         findBar.setMatches(count: count, active: activeOrdinal)
+    }
+
+    func browserView(_ view: FGBrowserView, didChangeFavicon favicon: NSImage?) {
+        guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
+        tab.favicon = favicon
+        if let favicon { FaviconStore.shared.store(favicon, for: tab.url) }
+        tabStrip.update(with: tabs, selectedIndex: selectedIndex)
     }
 
     func browserView(_ view: FGBrowserView, didChangeTitle title: String) {

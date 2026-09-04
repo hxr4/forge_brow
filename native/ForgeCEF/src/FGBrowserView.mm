@@ -18,6 +18,8 @@
   BOOL _browserRequested;
   NSString* _currentURL;
   NSString* _currentTitle;
+  NSImage* _favicon;
+  NSString* _faviconHost;
   BOOL _isLoading;
   BOOL _canGoBack;
   BOOL _canGoForward;
@@ -94,6 +96,10 @@
 
 - (NSString *)currentTitle {
   return _currentTitle ?: @"";
+}
+
+- (NSImage *)favicon {
+  return _favicon;
 }
 
 - (BOOL)isLoading {
@@ -267,7 +273,20 @@
   _client = nullptr;
 }
 
+- (void)handleFaviconChange:(NSImage *)favicon {
+  _favicon = favicon;
+  id<FGBrowserViewDelegate> delegate = self.browserDelegate;
+  if ([delegate respondsToSelector:@selector(browserView:didChangeFavicon:)]) {
+    [delegate browserView:self didChangeFavicon:favicon];
+  }
+}
+
 - (void)handleAddressChange:(NSString *)url {
+  NSString* host = [NSURL URLWithString:url].host ?: @"";
+  if (_faviconHost && ![_faviconHost isEqualToString:host]) {
+    [self handleFaviconChange:nil];
+  }
+  _faviconHost = [host copy];
   _currentURL = [url copy];
   id<FGBrowserViewDelegate> delegate = self.browserDelegate;
   if ([delegate respondsToSelector:@selector(browserView:didChangeURL:)]) {

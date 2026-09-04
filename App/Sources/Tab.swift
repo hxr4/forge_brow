@@ -7,6 +7,7 @@ final class Tab {
 
     var title: String
     var url: String
+    var favicon: NSImage?
     var isLoading = false
     var canGoBack = false
     var canGoForward = false
@@ -33,6 +34,7 @@ final class Tab {
     init(url: String) {
         self.url = url
         self.title = ""
+        self.favicon = FaviconStore.shared.icon(for: url)
         self.browserView = FGBrowserView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800),
                                          initialURL: url)
         self.browserView.translatesAutoresizingMaskIntoConstraints = false

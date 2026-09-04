@@ -6,6 +6,7 @@
 #import "FGBrowserViewInternal.h"
 #import "FGDownloads.h"
 
+#include "include/cef_image.h"
 #include "include/cef_parser.h"
 #include "include/cef_ssl_info.h"
 
@@ -32,7 +33,6 @@ const char* AdblockTypeForResourceType(cef_resource_type_t type) {
     case RT_SCRIPT:
       return "script";
     case RT_IMAGE:
-    case RT_FAVICON:
       return "image";
     case RT_FONT_RESOURCE:
       return "font";
@@ -66,6 +66,45 @@ std::string EscapeForJSString(const std::string& input) {
   }
   return out;
 }
+
+
+class FGFaviconCallback : public CefDownloadImageCallback {
+ public:
+  explicit FGFaviconCallback(FGBrowserView* owner) : owner_(owner) {}
+
+  void OnDownloadImageFinished(const CefString& image_url,
+                               int http_status_code,
+                               CefRefPtr<CefImage> image) override {
+    if (!image) {
+      return;
+    }
+    int width = 0;
+    int height = 0;
+    CefRefPtr<CefBinaryValue> png = image->GetAsPNG(1.0f, true, width, height);
+    if (!png) {
+      return;
+    }
+    const size_t size = png->GetSize();
+    if (size == 0) {
+      return;
+    }
+    NSMutableData* data = [NSMutableData dataWithLength:size];
+    if (png->GetData(data.mutableBytes, size, 0) != size) {
+      return;
+    }
+    __weak FGBrowserView* owner = owner_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSImage* icon = [[NSImage alloc] initWithData:data];
+      if (icon.isValid) {
+        [owner handleFaviconChange:icon];
+      }
+    });
+  }
+
+ private:
+  __weak FGBrowserView* owner_;
+  IMPLEMENT_REFCOUNTING(FGFaviconCallback);
+};
 
 bool IsInternalScheme(const std::string& url) {
   if (url.empty()) {
@@ -274,6 +313,19 @@ void FGClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& tit
   });
 }
 
+void FGClient::OnFaviconURLChange(CefRefPtr<CefBrowser> browser,
+                                  const std::vector<CefString>& icon_urls) {
+  if (!browser || icon_urls.empty()) {
+    return;
+  }
+  FGBrowserView* owner = owner_;
+  if (!owner) {
+    return;
+  }
+  browser->GetHost()->DownloadImage(icon_urls.front(), true, 32, false,
+                                    new FGFaviconCallback(owner));
+}
+
 bool FGClient::OnCertificateError(CefRefPtr<CefBrowser> browser,
                                   cef_errorcode_t cert_error,
                                   const CefString& request_url,
@@ -302,7 +354,7 @@ cef_return_value_t FGClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser,
                                                   CefRefPtr<CefRequest> request,
                                                   CefRefPtr<CefCallback> callback) {
   const cef_resource_type_t resource_type = request->GetResourceType();
-  if (resource_type == RT_MAIN_FRAME) {
+  if (resource_type == RT_MAIN_FRAME || resource_type == RT_FAVICON) {
     return RV_CONTINUE;
   }
 

@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 @optional
 - (void)browserView:(FGBrowserView *)view didChangeURL:(NSString *)url;
 - (void)browserView:(FGBrowserView *)view didChangeTitle:(NSString *)title;
+- (void)browserView:(FGBrowserView *)view didChangeFavicon:(nullable NSImage *)favicon;
 - (void)browserView:(FGBrowserView *)view
     didChangeLoading:(BOOL)loading
            canGoBack:(BOOL)canGoBack
@@ -30,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, readonly, copy) NSString *currentURL;
 @property (nonatomic, readonly, copy) NSString *currentTitle;
+@property (nonatomic, readonly, nullable) NSImage *favicon;
 @property (nonatomic, readonly) BOOL isLoading;
 @property (nonatomic, readonly) BOOL canGoBack;
 @property (nonatomic, readonly) BOOL canGoForward;
