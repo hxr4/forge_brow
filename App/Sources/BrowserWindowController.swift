@@ -475,7 +475,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
         RunLoop.main.add(timer, forMode: .common)
         stateTimer = timer
-        pushState()
+        pushState(force: true)
     }
 
     // MARK: - Tabs
@@ -756,18 +756,80 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
     }
 
-    private func pushState() {
+    private static let isoFormatter = ISO8601DateFormatter()
+
+    private var historyRevision = -1
+    private var historyPayload: [[String: Any]] = []
+    private var bookmarkRevision = -1
+    private var bookmarkPayload: [[String: Any]] = []
+    private var trayRevision = -1
+    private var trayPayload: [[String: Any]] = []
+    private var lastSignature = ""
+    private var stateRevision = 0
+
+    private var hasInternalPage: Bool {
+        tabs.contains { ForgeURL.isInternal($0.url) }
+    }
+
+    private func commitCounters() {
+        StatsStore.shared.commitSessionCounters(blocked: FGAdblock.shared.blockedCount,
+                                                bytes: FGAdblock.shared.estimatedBytesSaved)
+    }
+
+    private func refreshCachedPayloads() {
+        if historyRevision != HistoryStore.shared.revision {
+            historyRevision = HistoryStore.shared.revision
+            historyPayload = HistoryStore.shared.recent(300).map {
+                ["title": $0.title,
+                 "url": $0.url,
+                 "at": Self.isoFormatter.string(from: $0.visitedAt)]
+            }
+        }
+        if bookmarkRevision != BookmarkStore.shared.revision {
+            bookmarkRevision = BookmarkStore.shared.revision
+            bookmarkPayload = BookmarkStore.shared.all.map { ["title": $0.title, "url": $0.url] }
+        }
+        if trayRevision != Trays.revision {
+            trayRevision = Trays.revision
+            trayPayload = Trays.all.map { tray in
+                ["name": tray.name, "sites": tray.sites.map { ["title": $0.title, "url": $0.url] }]
+            }
+        }
+    }
+
+    private func pushState(force: Bool = false) {
+        commitCounters()
+        guard force || hasInternalPage else { return }
+
+        refreshCachedPayloads()
+
         let store = FGStateStore.shared
-        let blocked = FGAdblock.shared.blockedCount
-        let bytes = FGAdblock.shared.estimatedBytesSaved
-        StatsStore.shared.commitSessionCounters(blocked: blocked, bytes: bytes)
+        let servers = DevServerMonitor.shared.servers
+        let downloads = FGDownloads.shared.snapshot()
+
+        let signature = [
+            String(historyRevision),
+            String(bookmarkRevision),
+            String(trayRevision),
+            SearchEngines.current.id,
+            orientation.rawValue,
+            servers.map { String($0.port) }.joined(separator: ","),
+            String(downloads.count),
+            String(StatsStore.shared.lifetimeBlocked),
+            String(FGAdblock.shared.blockedPopupCount)
+        ].joined(separator: "|")
+
+        if signature != lastSignature {
+            lastSignature = signature
+            stateRevision += 1
+        } else if !force {
+            return
+        }
 
         store.setValue(SearchEngines.all.map { ["id": $0.id, "name": $0.name] }, forStateKey: "searchEngines")
         store.setValue(SearchEngines.current.id, forStateKey: "currentSearchEngine")
-        store.setValue(Trays.all.map { tray in
-            ["name": tray.name, "sites": tray.sites.map { ["title": $0.title, "url": $0.url] }]
-        }, forStateKey: "trays")
-        store.setValue(DevServerMonitor.shared.servers.map {
+        store.setValue(trayPayload, forStateKey: "trays")
+        store.setValue(servers.map {
             ["port": $0.port, "process": $0.processName, "url": $0.url]
         }, forStateKey: "devServers")
         store.setValue(DevTools.all.map { ["id": $0.id, "name": $0.name, "url": $0.url, "group": $0.group] }, forStateKey: "tools")
@@ -781,17 +843,16 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             )
         ]
         store.setValue(statsPayload, forStateKey: "stats")
-        store.setValue(BookmarkStore.shared.all.map { ["title": $0.title, "url": $0.url] }, forStateKey: "bookmarks")
-        store.setValue(HistoryStore.shared.recent(300).map {
-            ["title": $0.title, "url": $0.url, "at": ISO8601DateFormatter().string(from: $0.visitedAt)]
-        }, forStateKey: "history")
+        store.setValue(bookmarkPayload, forStateKey: "bookmarks")
+        store.setValue(historyPayload, forStateKey: "history")
         store.setValue(orientation.rawValue, forStateKey: "tabOrientation")
-        store.setValue(FGDownloads.shared.snapshot(), forStateKey: "downloads")
+        store.setValue(downloads, forStateKey: "downloads")
         store.setValue([
             "popupsBlocked": FGAdblock.shared.blockedPopupCount,
             "lists": FGAdblock.shared.listCount
         ], forStateKey: "shields")
         store.setValue(FGEngine.cefVersion(), forStateKey: "cefVersion")
+        store.setValue(stateRevision, forStateKey: "revision")
     }
 
     // MARK: - FGBrowserViewDelegate

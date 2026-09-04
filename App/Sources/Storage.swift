@@ -34,6 +34,7 @@ final class HistoryStore {
     private let limit = 6000
     private var entries: [HistoryEntry]
     private var dirty = false
+    private(set) var revision = 0
 
     private init() {
         entries = Storage.load([HistoryEntry].self, from: fileName) ?? []
@@ -55,6 +56,7 @@ final class HistoryStore {
             if entries.count > limit { entries.removeLast(entries.count - limit) }
         }
         dirty = true
+        revision += 1
     }
 
     func recent(_ count: Int) -> [HistoryEntry] { Array(entries.prefix(count)) }
@@ -70,6 +72,7 @@ final class HistoryStore {
     func clear() {
         entries.removeAll()
         dirty = true
+        revision += 1
         flush()
     }
 
@@ -91,6 +94,7 @@ final class BookmarkStore {
 
     private let fileName = "bookmarks.json"
     private(set) var all: [Bookmark]
+    private(set) var revision = 0
 
     private init() {
         all = Storage.load([Bookmark].self, from: fileName) ?? []
@@ -115,7 +119,10 @@ final class BookmarkStore {
         persist()
     }
 
-    private func persist() { Storage.save(all, to: fileName) }
+    private func persist() {
+        revision += 1
+        Storage.save(all, to: fileName)
+    }
 }
 
 struct ClosedTab {
