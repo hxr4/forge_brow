@@ -3,6 +3,7 @@ import AppKit
 final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, NSTextFieldDelegate {
 
     private var tabs: [Tab] = []
+    private var groups: [TabGroup] = []
     private var selectedIndex: Int = 0
 
     private let chrome = ChromeContainer()
@@ -87,6 +88,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id: id) }
         tabStrip.onClose = { [weak self] id in self?.closeTab(id: id) }
         tabStrip.onNewTab = { [weak self] in self?.handleNewTab() }
+        tabStrip.onToggleGroup = { [weak self] id in self?.toggleGroupCollapsed(id) }
 
         toolbarView.wantsLayer = true
         toolbarView.layer?.backgroundColor = Theme.ink.cgColor
@@ -574,7 +576,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         return tab
     }
 
-    private func closeTab(id: UUID) {
+    func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         closeTab(at: index)
     }
@@ -591,6 +593,96 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             return
         }
         selectedIndex = min(selectedIndex, tabs.count - 1)
+        pruneGroups()
+        selectFirstVisibleTab()
+        refreshChrome()
+    }
+
+    var tabGroups: [TabGroup] { groups }
+
+    var selectedTabGroupID: UUID? { selectedTab?.groupID }
+
+    private func reorderIntoGroups() {
+        let selectedID = selectedTab?.id
+        var result: [Tab] = []
+        var placed = Set<UUID>()
+        for tab in tabs where !placed.contains(tab.id) {
+            if let groupID = tab.groupID {
+                for member in tabs where member.groupID == groupID && !placed.contains(member.id) {
+                    result.append(member)
+                    placed.insert(member.id)
+                }
+            } else {
+                result.append(tab)
+                placed.insert(tab.id)
+            }
+        }
+        tabs = result
+        if let selectedID, let index = tabs.firstIndex(where: { $0.id == selectedID }) {
+            selectedIndex = index
+        }
+    }
+
+    private func pruneGroups() {
+        let live = Set(tabs.compactMap { $0.groupID })
+        groups.removeAll { !live.contains($0.id) }
+    }
+
+    private func selectFirstVisibleTab() {
+        let collapsed = Set(groups.filter { $0.isCollapsed }.map { $0.id })
+        if let index = tabs.firstIndex(where: { tab in
+            guard let groupID = tab.groupID else { return true }
+            return !collapsed.contains(groupID)
+        }) {
+            selectedIndex = index
+        }
+    }
+
+    func addSelectedTabToGroup(_ id: UUID) {
+        guard let tab = selectedTab else { return }
+        tab.groupID = id
+        if let index = groups.firstIndex(where: { $0.id == id }) { groups[index].isCollapsed = false }
+        reorderIntoGroups()
+        pruneGroups()
+        refreshChrome()
+    }
+
+    @objc func handleNewTabGroup() {
+        guard let tab = selectedTab else { return }
+        let group = TabGroup(name: "Group \(groups.count + 1)", colorIndex: groups.count)
+        groups.append(group)
+        tab.groupID = group.id
+        reorderIntoGroups()
+        refreshChrome()
+    }
+
+    @objc func handleUngroupTab() {
+        guard let tab = selectedTab, tab.groupID != nil else { return }
+        tab.groupID = nil
+        reorderIntoGroups()
+        pruneGroups()
+        refreshChrome()
+    }
+
+    @objc func handleToggleGroupCollapsed() {
+        guard let id = selectedTab?.groupID else { return }
+        toggleGroupCollapsed(id)
+    }
+
+    func toggleGroupCollapsed(_ id: UUID) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        groups[index].isCollapsed.toggle()
+        if groups[index].isCollapsed, selectedTab?.groupID == id {
+            selectFirstVisibleTab()
+        }
+        refreshChrome()
+    }
+
+    @objc func handleCloseGroup() {
+        guard let id = selectedTab?.groupID else { return }
+        let doomed = tabs.filter { $0.groupID == id }.map { $0.id }
+        for tabID in doomed { closeTab(id: tabID) }
+        pruneGroups()
         refreshChrome()
     }
 
@@ -607,7 +699,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
         if findVisible { positionFindBar() }
         if statsVisible { positionStats() }
-        tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+        tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         updateToolbarState()
     }
 
@@ -769,6 +861,32 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                     self?.handleToggleCertBypass()
                 }
             ]
+
+            commands.append(PaletteCommand(id: "group-new", title: "New Tab Group with This Tab",
+                                           subtitle: "Start a group from the current tab") { [weak self] in
+                self?.handleNewTabGroup()
+            })
+            for group in self.groups where group.id != self.selectedTab?.groupID {
+                commands.append(PaletteCommand(id: "group-" + group.id.uuidString,
+                                               title: "Move to Group: " + group.name,
+                                               subtitle: "Add this tab to an existing group") { [weak self] in
+                    self?.addSelectedTabToGroup(group.id)
+                })
+            }
+            if self.selectedTab?.groupID != nil {
+                commands.append(PaletteCommand(id: "group-remove", title: "Remove Tab from Group",
+                                               subtitle: "Ungroup the current tab") { [weak self] in
+                    self?.handleUngroupTab()
+                })
+                commands.append(PaletteCommand(id: "group-collapse", title: "Collapse or Expand Group",
+                                               subtitle: "Fold this group in the tab strip") { [weak self] in
+                    self?.handleToggleGroupCollapsed()
+                })
+                commands.append(PaletteCommand(id: "group-close", title: "Close Group",
+                                               subtitle: "Close every tab in this group") { [weak self] in
+                    self?.handleCloseGroup()
+                })
+            }
 
             if let tab = self.selectedTab, tab.url.hasPrefix("http") {
                 for tray in Trays.all {
@@ -992,7 +1110,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tab.url = url
         if tab.favicon == nil, let cached = FaviconStore.shared.icon(for: url) {
             tab.favicon = cached
-            tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+            tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         }
         if tab === selectedTab { updateToolbarState() }
     }
@@ -1005,14 +1123,14 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
         tab.favicon = favicon
         if let favicon { FaviconStore.shared.store(favicon, for: tab.url) }
-        tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+        tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
     }
 
     func browserView(_ view: FGBrowserView, didChangeTitle title: String) {
         guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
         tab.title = title
         HistoryStore.shared.record(url: tab.url, title: title)
-        tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+        tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         if tab === selectedTab { updateToolbarState() }
     }
 
@@ -1021,7 +1139,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tab.isLoading = loading
         tab.canGoBack = canGoBack
         tab.canGoForward = canGoForward
-        tabStrip.update(with: tabs, selectedIndex: selectedIndex)
+        tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         if tab === selectedTab { updateToolbarState() }
     }
 

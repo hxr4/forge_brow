@@ -12,6 +12,8 @@ final class TabItemView: NSView {
     private let iconView = NSImageView()
     private let statusDot = NSView()
     private let closeButton = NSButton()
+    private let groupBar = NSView()
+    private var groupColor: NSColor?
     private var trackingArea: NSTrackingArea?
 
     private var isActive = false
@@ -27,6 +29,11 @@ final class TabItemView: NSView {
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.clear.cgColor
         layer?.backgroundColor = NSColor.clear.cgColor
+
+        groupBar.wantsLayer = true
+        groupBar.layer?.cornerRadius = 1
+        groupBar.isHidden = true
+        addSubview(groupBar)
 
         iconSlot.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconSlot)
@@ -118,7 +125,17 @@ final class TabItemView: NSView {
         onClose?()
     }
 
-    func apply(title: String, favicon: NSImage?, active: Bool, bypass: Bool, busy: Bool) {
+    override func layout() {
+        super.layout()
+        groupBar.frame = NSRect(x: 2, y: 6, width: 2, height: max(0, bounds.height - 12))
+    }
+
+    func apply(title: String,
+               favicon: NSImage?,
+               active: Bool,
+               bypass: Bool,
+               busy: Bool,
+               groupColor: NSColor?) {
         let display = title.isEmpty ? "New Tab" : title
         if titleLabel.stringValue != display { titleLabel.stringValue = display }
         toolTip = display
@@ -127,6 +144,10 @@ final class TabItemView: NSView {
         if iconView.image !== favicon { iconView.image = favicon }
         iconView.isHidden = !showsIcon
         statusDot.isHidden = showsIcon
+
+        self.groupColor = groupColor
+        groupBar.isHidden = groupColor == nil || bypass
+        groupBar.layer?.backgroundColor = (groupColor ?? .clear).cgColor
 
         let changed = active != isActive || bypass != hasBypass || busy != isBusy
         isActive = active
@@ -146,7 +167,7 @@ final class TabItemView: NSView {
             text = isActive ? Theme.cream : Theme.bone
         } else if isActive {
             background = Theme.panelHi
-            border = Theme.moss
+            border = groupColor ?? Theme.moss
             text = Theme.cream
         } else if isHovering {
             background = Theme.panel
