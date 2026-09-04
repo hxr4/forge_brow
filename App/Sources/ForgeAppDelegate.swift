@@ -16,6 +16,17 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         false
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let addresses = urls.map { $0.absoluteString }.filter { !$0.isEmpty }
+        guard !addresses.isEmpty else { return }
+        if activeController == nil { openNewWindow() }
+        guard let controller = activeController else { return }
+        for address in addresses {
+            controller.newTab(url: address)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         HistoryStore.shared.flush()
         FGEngine.quitMessageLoop()
