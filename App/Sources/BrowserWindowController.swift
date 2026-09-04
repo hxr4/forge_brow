@@ -473,6 +473,14 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         pushState()
     }
 
+    func addCurrentTabToTray(_ name: String?) {
+        guard let tab = selectedTab, tab.url.hasPrefix("http") else { return }
+        Trays.addSite(title: tab.title, url: tab.url, tray: name)
+        pushState(force: true)
+    }
+
+    @objc func handleAddShortcut() { addCurrentTabToTray(nil) }
+
     @objc func handleShowBookmarks() { newTab(url: "forge://home/bookmarks.html") }
     @objc func handleShowHistory() { newTab(url: "forge://home/history.html") }
     @objc func handleShowSettings() { newTab(url: "forge://home/settings.html") }
@@ -762,6 +770,16 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                 }
             ]
 
+            if let tab = self.selectedTab, tab.url.hasPrefix("http") {
+                for tray in Trays.all {
+                    commands.append(PaletteCommand(id: "shortcut-" + tray.name,
+                                                   title: "Add to Shortcuts: " + tray.name,
+                                                   subtitle: "Pin this page to the " + tray.name + " tray") { [weak self] in
+                        self?.addCurrentTabToTray(tray.name)
+                    })
+                }
+            }
+
             for tool in DevTools.all {
                 commands.append(PaletteCommand(id: "tool-" + tool.id, title: tool.name, subtitle: "Developer utility") { [weak self] in
                     self?.newTab(url: tool.url)
@@ -811,6 +829,45 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         case "revealDownload":
             if let path = payload["path"] as? String, !path.isEmpty {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            }
+        case "addShortcut":
+            Trays.addSite(title: payload["title"] as? String ?? "",
+                          url: payload["url"] as? String ?? "",
+                          tray: payload["tray"] as? String)
+            pushState(force: true)
+        case "removeShortcut":
+            if let url = payload["url"] as? String {
+                Trays.removeSite(url: url, tray: payload["tray"] as? String)
+                pushState(force: true)
+            }
+        case "moveShortcut":
+            if let url = payload["url"] as? String,
+               let tray = payload["tray"] as? String,
+               let index = payload["index"] as? Int {
+                Trays.moveSite(url: url, tray: tray, to: index)
+                pushState(force: true)
+            }
+        case "renameShortcut":
+            if let url = payload["url"] as? String,
+               let tray = payload["tray"] as? String,
+               let title = payload["title"] as? String {
+                Trays.renameSite(url: url, tray: tray, title: title)
+                pushState(force: true)
+            }
+        case "addTray":
+            if let name = payload["name"] as? String {
+                Trays.addTray(name: name)
+                pushState(force: true)
+            }
+        case "removeTray":
+            if let name = payload["name"] as? String {
+                Trays.removeTray(name: name)
+                pushState(force: true)
+            }
+        case "renameTray":
+            if let from = payload["from"] as? String, let to = payload["to"] as? String {
+                Trays.renameTray(from: from, to: to)
+                pushState(force: true)
             }
         case "setTrays":
             if let raw = payload["trays"] as? [[String: Any]] {
