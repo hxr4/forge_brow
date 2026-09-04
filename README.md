@@ -83,11 +83,61 @@ an action. No renderer-side code needed.
 Internal pages: `forge://settings`, `forge://history`, `forge://bookmarks`,
 `forge://downloads`, `forge://tools`, `forge://help`.
 
+`GET /api/state` includes a `revision` integer that only changes when the content behind
+it changes. Poll it and skip re-rendering when it has not moved — the state is otherwise
+identical between polls and re-rendering it is what made static content look like it was
+reloading.
+
+`POST /api/command` actions for the landing page shortcuts:
+
+| action | payload | effect |
+| --- | --- | --- |
+| `addShortcut` | `title`, `url`, `tray` (optional) | add a tile; first tray if `tray` is omitted |
+| `removeShortcut` | `url`, `tray` (optional) | remove from one tray, or all when omitted |
+| `moveShortcut` | `tray`, `url`, `index` | reorder within a tray |
+| `renameShortcut` | `tray`, `url`, `title` | rename a tile |
+| `addTray` / `removeTray` | `name` | add or remove a tray; the last tray cannot be removed |
+| `renameTray` | `from`, `to` | rename a tray |
+
+Adding is a no-op for a URL already in the tray. Every one of these bumps `revision`.
+
+### Asking a page a question
+
+`FGBrowserView -evaluate:completion:` runs JavaScript in a tab and returns the value, built
+on `ExecuteDevToolsMethod("Runtime.evaluate")` plus a `CefDevToolsMessageObserver`. It needs
+no DevTools front-end and no renderer-side code. The now playing bar and the stats overlay
+are both built on it, and it is the general-purpose hook for anything that needs to read
+page state from Swift.
+
+## Browser features
+
+- **Tabs** — horizontal or vertical strip, site favicons with an on-disk cache, and
+  collapsible coloured groups that keep their members contiguous.
+- **Omnibox** — history and bookmark matches merged with live completions from the active
+  engine. Remote completions are debounced, cookie-free and switchable off; local matches
+  keep working without them.
+- **Now playing** — a bar appears while any tab plays audio, with artwork, title, artist and
+  progress from `mediaSession`, play/pause, ±10s, mute, and click-to-jump-to-the-noisy-tab.
+- **Stats for nerds** — ⌥⌘S, or View › Developer. Per-page DOM, request, transfer and timing
+  figures alongside blocked counts, filter rule count, helper process count and browser
+  memory.
+- **Shortcuts** — editable trays, from the Bookmarks menu, the palette, or the page API.
+- **Default browser** — Forge declares `http`/`https` and opens URLs handed to it by other
+  applications.
+
 ## Safety
 
 Any tab with a bypass active shows a persistent indicator — orange tab border plus a
 `⚠︎ CERT CHECKS OFF` pill in the toolbar — for as long as it is active. Bypasses are always
 scoped to one tab, never global.
+
+Group colours never use amber, and a tab with an active bypass suppresses its group accent,
+so amber in the tab strip only ever means a bypass is on.
+
+Forge declares usage descriptions for every capability it hands to web content — Bluetooth,
+camera, microphone, location, speech, local network, user folders. macOS aborts any process
+that touches one of these without a declared purpose, which is what used to kill the browser
+the moment a sign-in page offered a passkey.
 
 Renderer processes run inside the Chromium sandbox.
 
