@@ -1,6 +1,22 @@
 import AppKit
 import Foundation
 
+struct TabGroup: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var colorIndex: Int
+    var isCollapsed: Bool
+
+    init(name: String, colorIndex: Int) {
+        self.id = UUID()
+        self.name = name
+        self.colorIndex = colorIndex
+        self.isCollapsed = false
+    }
+
+    var color: NSColor { Theme.groupPalette[colorIndex % Theme.groupPalette.count] }
+}
+
 final class Tab {
     let id = UUID()
     let browserView: FGBrowserView
@@ -9,6 +25,7 @@ final class Tab {
     var url: String
     var favicon: NSImage?
     var media: NowPlaying?
+    var groupID: UUID?
     var isLoading = false
     var canGoBack = false
     var canGoForward = false

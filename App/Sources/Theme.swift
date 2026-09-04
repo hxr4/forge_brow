@@ -29,6 +29,15 @@ enum Theme {
     static let muted = NSColor(rgb: 0x6B6F5E)
     static let warn = NSColor(rgb: 0xFF8A3D)
 
+    static let groupPalette: [NSColor] = [
+        NSColor(rgb: 0x96965A),
+        NSColor(rgb: 0xCFE85C),
+        NSColor(rgb: 0x5CC8E8),
+        NSColor(rgb: 0xA98CE8),
+        NSColor(rgb: 0x5CE8A0),
+        NSColor(rgb: 0xE85C9A)
+    ]
+
     enum Metrics {
         static let tabHeight: CGFloat = 30
         static let tabRadius: CGFloat = 8

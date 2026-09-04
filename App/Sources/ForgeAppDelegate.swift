@@ -55,6 +55,11 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func moveToGroupFromMenu(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let id = UUID(uuidString: raw) else { return }
+        activeController?.addSelectedTabToGroup(id)
+    }
+
     @objc private func addShortcutFromMenu(_ sender: NSMenuItem) {
         activeController?.addCurrentTabToTray(sender.representedObject as? String)
     }
@@ -208,8 +213,7 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let tabItem = NSMenuItem()
         let tab = NSMenu(title: "Tab")
-        tab.addItem(browserItem("Show Next Tab", "handleNextTab", "\t", [.control]))
-        tab.addItem(browserItem("Show Previous Tab", "handlePreviousTab", "\t", [.control, .shift]))
+        tab.delegate = self
         tabItem.submenu = tab
         main.addItem(tabItem)
 
@@ -254,6 +258,36 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let display = title.count > 60 ? String(title.prefix(60)) + "…" : title
                     menu.addItem(linkItem(display, entry.url))
                 }
+            }
+        case "Tab":
+            menu.removeAllItems()
+            menu.addItem(browserItem("Show Next Tab", "handleNextTab", "\t", [.control]))
+            menu.addItem(browserItem("Show Previous Tab", "handlePreviousTab", "\t", [.control, .shift]))
+            menu.addItem(.separator())
+            menu.addItem(browserItem("New Group with This Tab", "handleNewTabGroup", "g", [.command, .shift]))
+
+            let controller = activeController
+            let groups = controller?.tabGroups ?? []
+            let currentGroup = controller?.selectedTabGroupID
+            let others = groups.filter { $0.id != currentGroup }
+            if !others.isEmpty {
+                let moveItem = NSMenuItem(title: "Move to Group", action: nil, keyEquivalent: "")
+                let moveMenu = NSMenu(title: "Move to Group")
+                for group in others {
+                    let entry = NSMenuItem(title: group.name,
+                                           action: #selector(moveToGroupFromMenu(_:)),
+                                           keyEquivalent: "")
+                    entry.target = self
+                    entry.representedObject = group.id.uuidString
+                    moveMenu.addItem(entry)
+                }
+                moveItem.submenu = moveMenu
+                menu.addItem(moveItem)
+            }
+            if currentGroup != nil {
+                menu.addItem(browserItem("Remove Tab from Group", "handleUngroupTab"))
+                menu.addItem(browserItem("Collapse or Expand Group", "handleToggleGroupCollapsed"))
+                menu.addItem(browserItem("Close Group", "handleCloseGroup"))
             }
         case "Bookmarks":
             menu.removeAllItems()
