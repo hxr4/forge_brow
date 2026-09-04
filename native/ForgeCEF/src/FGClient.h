@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "include/cef_client.h"
 #include "include/cef_find_handler.h"
@@ -75,6 +76,8 @@ class FGClient : public CefClient,
                        CefRefPtr<CefFrame> frame,
                        const CefString& url) override;
   void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
+  void OnFaviconURLChange(CefRefPtr<CefBrowser> browser,
+                          const std::vector<CefString>& icon_urls) override;
 
   bool OnCertificateError(CefRefPtr<CefBrowser> browser,
                           cef_errorcode_t cert_error,

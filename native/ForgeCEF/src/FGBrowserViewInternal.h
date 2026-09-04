@@ -5,6 +5,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface FGBrowserView (Internal)
 - (void)handleAddressChange:(NSString *)url;
 - (void)handleTitleChange:(NSString *)title;
+- (void)handleFaviconChange:(nullable NSImage *)favicon;
 - (void)handleLoadingState:(BOOL)loading canGoBack:(BOOL)canGoBack canGoForward:(BOOL)canGoForward;
 - (void)handleLoadError:(NSString *)message url:(NSString *)url;
 - (void)handleBrowserCreated;

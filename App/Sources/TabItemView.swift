@@ -8,6 +8,8 @@ final class TabItemView: NSView {
     var onClose: (() -> Void)?
 
     private let titleLabel = NSTextField(labelWithString: "")
+    private let iconSlot = NSView()
+    private let iconView = NSImageView()
     private let statusDot = NSView()
     private let closeButton = NSButton()
     private var trackingArea: NSTrackingArea?
@@ -26,11 +28,21 @@ final class TabItemView: NSView {
         layer?.borderColor = NSColor.clear.cgColor
         layer?.backgroundColor = NSColor.clear.cgColor
 
+        iconSlot.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconSlot)
+
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.wantsLayer = true
+        iconView.layer?.cornerRadius = 2
+        iconView.isHidden = true
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconSlot.addSubview(iconView)
+
         statusDot.wantsLayer = true
         statusDot.layer?.cornerRadius = 3
         statusDot.layer?.backgroundColor = Theme.mossDeep.cgColor
         statusDot.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(statusDot)
+        iconSlot.addSubview(statusDot)
 
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
         titleLabel.textColor = Theme.muted
@@ -50,12 +62,22 @@ final class TabItemView: NSView {
         addSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            statusDot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            statusDot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconSlot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconSlot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconSlot.widthAnchor.constraint(equalToConstant: 15),
+            iconSlot.heightAnchor.constraint(equalToConstant: 15),
+
+            iconView.leadingAnchor.constraint(equalTo: iconSlot.leadingAnchor),
+            iconView.trailingAnchor.constraint(equalTo: iconSlot.trailingAnchor),
+            iconView.topAnchor.constraint(equalTo: iconSlot.topAnchor),
+            iconView.bottomAnchor.constraint(equalTo: iconSlot.bottomAnchor),
+
+            statusDot.centerXAnchor.constraint(equalTo: iconSlot.centerXAnchor),
+            statusDot.centerYAnchor.constraint(equalTo: iconSlot.centerYAnchor),
             statusDot.widthAnchor.constraint(equalToConstant: 6),
             statusDot.heightAnchor.constraint(equalToConstant: 6),
 
-            titleLabel.leadingAnchor.constraint(equalTo: statusDot.trailingAnchor, constant: 8),
+            titleLabel.leadingAnchor.constraint(equalTo: iconSlot.trailingAnchor, constant: 8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -6),
 
@@ -96,10 +118,15 @@ final class TabItemView: NSView {
         onClose?()
     }
 
-    func apply(title: String, active: Bool, bypass: Bool, busy: Bool) {
+    func apply(title: String, favicon: NSImage?, active: Bool, bypass: Bool, busy: Bool) {
         let display = title.isEmpty ? "New Tab" : title
         if titleLabel.stringValue != display { titleLabel.stringValue = display }
         toolTip = display
+
+        let showsIcon = favicon != nil && !bypass && !busy
+        if iconView.image !== favicon { iconView.image = favicon }
+        iconView.isHidden = !showsIcon
+        statusDot.isHidden = showsIcon
 
         let changed = active != isActive || bypass != hasBypass || busy != isBusy
         isActive = active
