@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Base64</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Base64', 'UTF-8 safe. Nothing leaves this machine.');
+  root.innerHTML = '<div class="ctl"><button class="btn" id="enc">Encode &#8594;</button>'
+    + '<button class="btn" id="dec">&#8592; Decode</button>'
+    + '<label class="chk"><input type="checkbox" id="urlsafe"> URL-safe alphabet</label>'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="panes"><textarea id="a" spellcheck="false" placeholder="Plain text"></textarea>'
+    + '<textarea id="b" spellcheck="false" placeholder="Base64"></textarea></div>';
+  const a=root.querySelector('#a'), b=root.querySelector('#b'), st=root.querySelector('#st');
+  const safe=()=>root.querySelector('#urlsafe').checked;
+  const enc = s => { let o = btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+    return safe() ? o.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'') : o; };
+  const dec = s => { let t=s.trim().replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='=';
+    return new TextDecoder().decode(Uint8Array.from(atob(t), c=>c.charCodeAt(0))); };
+  root.querySelector('#enc').onclick = () => {
+    try{ b.value=enc(a.value); st.textContent=b.value.length+' chars'; st.className='status'; }
+    catch(e){ st.textContent=e.message; st.className='status bad'; } };
+  root.querySelector('#dec').onclick = () => {
+    try{ a.value=dec(b.value); st.textContent='decoded'; st.className='status good'; }
+    catch(e){ st.textContent='Not valid Base64'; st.className='status bad'; } };
+  a.focus();
+});
+</script></body></html>

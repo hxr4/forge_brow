@@ -1,0 +1,28 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>URL Tools</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('URL Tools', 'Encode, decode, and pull a URL apart into its pieces.');
+  root.innerHTML = '<div class="ctl"><button class="btn" id="enc">Encode</button><button class="btn" id="dec">Decode</button>'
+    + '<label class="chk"><input type="checkbox" id="comp" checked> component (encodeURIComponent)</label>'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="panes one"><textarea id="a" style="min-height:20vh" spellcheck="false" placeholder="https://example.com/path?q=hello world&amp;lang=en"></textarea></div>'
+    + '<div class="sect" style="margin-top:16px"><h2>Parsed</h2><div class="card"><dl class="kv" id="out"></dl></div></div>';
+  const a=root.querySelector('#a'), out=root.querySelector('#out'), st=root.querySelector('#st');
+  const comp=()=>root.querySelector('#comp').checked;
+  root.querySelector('#enc').onclick=()=>{ a.value = comp()?encodeURIComponent(a.value):encodeURI(a.value); run(); };
+  root.querySelector('#dec').onclick=()=>{ try{ a.value = comp()?decodeURIComponent(a.value):decodeURI(a.value); run(); }
+    catch(e){ st.textContent='Malformed escape sequence'; st.className='status bad'; } };
+  function run(){
+    st.textContent=a.value.length+' chars'; st.className='status';
+    let u; try{ u=new URL(a.value); }catch(e){ out.innerHTML='<dt>&mdash;</dt><dd style="color:var(--muted)">Not an absolute URL</dd>'; return; }
+    let html='<dt>protocol</dt><dd>'+esc(u.protocol)+'</dd><dt>host</dt><dd>'+esc(u.host)+'</dd>'
+      +'<dt>path</dt><dd>'+esc(u.pathname)+'</dd>';
+    if(u.hash) html+='<dt>hash</dt><dd>'+esc(u.hash)+'</dd>';
+    [...u.searchParams].forEach(([k,v])=>{ html+='<dt>?'+esc(k)+'</dt><dd>'+esc(v)+'</dd>'; });
+    out.innerHTML=html;
+  }
+  a.addEventListener('input',run);
+  a.value='https://example.com/path?q=hello world&lang=en'; run(); a.focus();
+});
+</script></body></html>

@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Regex Tester</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Regex Tester', 'JavaScript regular expressions, evaluated as you type.');
+  root.innerHTML = '<div class="ctl"><input class="small grow" id="re" spellcheck="false" placeholder="pattern, e.g. (\\w+)@(\\w+)\\.com">'
+    + '<input class="small" id="flags" value="g" style="width:80px" placeholder="flags">'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="panes"><textarea id="sub" spellcheck="false" placeholder="Test string"></textarea>'
+    + '<pre class="out" id="out"></pre></div>';
+  const re=root.querySelector('#re'), fl=root.querySelector('#flags'),
+        sub=root.querySelector('#sub'), out=root.querySelector('#out'), st=root.querySelector('#st');
+  function run(){
+    out.innerHTML=''; st.className='status'; st.textContent='';
+    if(!re.value){ return; }
+    let rx;
+    try{ rx=new RegExp(re.value, fl.value.includes('g')?fl.value:fl.value+'g'); }
+    catch(e){ st.textContent=e.message; st.className='status bad'; return; }
+    const text=sub.value; const matches=[...text.matchAll(rx)];
+    st.textContent=matches.length+' match'+(matches.length===1?'':'es');
+    st.className='status'+(matches.length?' good':'');
+    let hl='', last=0;
+    matches.forEach(m=>{ hl+=esc(text.slice(last,m.index))+'<mark>'+esc(m[0])+'</mark>'; last=m.index+m[0].length; });
+    hl+=esc(text.slice(last));
+    let groups='';
+    matches.slice(0,40).forEach((m,i)=>{
+      groups+='\n['+i+'] '+m[0];
+      for(let g=1;g<m.length;g++) groups+='\n     $'+g+' = '+(m[g]===undefined?'(none)':m[g]);
+      if(m.groups) for(const k in m.groups) groups+='\n     ?<'+k+'> = '+m.groups[k];
+    });
+    out.innerHTML = hl + (groups ? '\n\n<span style="color:var(--muted)">GROUPS</span>'+esc(groups) : '');
+  }
+  [re,fl,sub].forEach(el=>el.addEventListener('input',run));
+  sub.value='alice@example.com, bob@test.com'; re.value='(\\w+)@(\\w+)\\.com'; run(); re.focus();
+});
+</script></body></html>

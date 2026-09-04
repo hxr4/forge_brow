@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SQL Formatter</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('SQL Formatter', 'Keyword-aware reindent. Deliberately conservative: it never rewrites your query.');
+  root.innerHTML = '<div class="ctl"><button class="btn" id="go">Format</button>'
+    + '<label class="chk"><input type="checkbox" id="up" checked> uppercase keywords</label>'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="panes"><textarea id="a" spellcheck="false" placeholder="SELECT ..."></textarea>'
+    + '<pre class="out" id="out"></pre></div>';
+  const a=root.querySelector('#a'), out=root.querySelector('#out'), st=root.querySelector('#st');
+  const BREAK=['SELECT','FROM','WHERE','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','INSERT INTO',
+    'VALUES','UPDATE','SET','DELETE FROM','INNER JOIN','LEFT JOIN','RIGHT JOIN','FULL JOIN','JOIN',
+    'ON','UNION ALL','UNION','AND','OR'];
+  const KW=BREAK.concat(['AS','ASC','DESC','DISTINCT','COUNT','SUM','AVG','MIN','MAX','CASE','WHEN','THEN','ELSE','END','NULL','NOT','IN','IS','LIKE','BETWEEN']);
+  function run(){
+    let s=a.value.replace(/\s+/g,' ').trim();
+    if(!s){ out.textContent=''; st.textContent=''; return; }
+    if(root.querySelector('#up').checked)
+      KW.forEach(k=>{ s=s.replace(new RegExp('\\b'+k.replace(/ /g,'\\s+')+'\\b','gi'), k); });
+    BREAK.forEach(k=>{
+      const indent = ['AND','OR','ON'].includes(k) ? '\n  ' : '\n';
+      s=s.replace(new RegExp('\\s*\\b'+k.replace(/ /g,'\\s+')+'\\b\\s*','g'), indent+k+' ');
+    });
+    s=s.replace(/,\s*/g,',\n  ').replace(/\n{2,}/g,'\n').trim();
+    out.textContent=s;
+    st.textContent=s.split('\n').length+' lines'; st.className='status good';
+  }
+  root.querySelector('#go').onclick=run; a.addEventListener('input',run);
+  a.value='select u.id, u.name, count(o.id) as orders from users u left join orders o on o.user_id = u.id where u.active = 1 and u.created_at > \'2025-01-01\' group by u.id order by orders desc limit 20';
+  run(); a.focus();
+});
+</script></body></html>

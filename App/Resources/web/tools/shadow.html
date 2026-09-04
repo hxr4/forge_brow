@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Box Shadow</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Box Shadow', 'Build a shadow and read the CSS. Preview sits on the app background.');
+  root.innerHTML = '<div class="ctl">'
+    + 'x <input class="small" type="range" id="x" min="-60" max="60" value="0">'
+    + 'y <input class="small" type="range" id="y" min="-60" max="60" value="14">'
+    + 'blur <input class="small" type="range" id="b" min="0" max="120" value="34">'
+    + 'spread <input class="small" type="range" id="s" min="-40" max="60" value="-6">'
+    + '<input class="small" type="color" id="c" value="#000000" style="width:56px;padding:3px">'
+    + 'alpha <input class="small" type="range" id="al" min="0" max="100" value="62">'
+    + '<label class="chk"><input type="checkbox" id="ins"> inset</label></div>'
+    + '<div style="display:grid;place-items:center;height:280px;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:14px">'
+    + '<div id="box" style="width:180px;height:110px;border-radius:14px;background:var(--panel2);border:1px solid var(--line2)"></div></div>'
+    + '<pre class="out short" id="out" style="min-height:0;padding:16px"></pre>';
+  const q=id=>root.querySelector(id);
+  function run(){
+    const hex=q('#c').value, a=(q('#al').value/100).toFixed(2);
+    const rgb=[1,3,5].map(i=>parseInt(hex.substr(i,2),16));
+    const css=(q('#ins').checked?'inset ':'')+q('#x').value+'px '+q('#y').value+'px '
+      +q('#b').value+'px '+q('#s').value+'px rgba('+rgb.join(', ')+', '+a+')';
+    q('#box').style.boxShadow=css;
+    q('#out').textContent='box-shadow: '+css+';';
+  }
+  ['#x','#y','#b','#s','#c','#al','#ins'].forEach(s=>q(s).addEventListener('input',run));
+  run(); q('#out').after(copyBtn(()=>q('#out').textContent));
+});
+</script></body></html>

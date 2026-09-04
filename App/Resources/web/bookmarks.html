@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bookmarks</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', async () => {
+  const root = shell('Bookmarks');
+  async function draw(){
+    const s = await getState();
+    const marks = s.bookmarks || [];
+    if(!marks.length){
+      root.innerHTML = '<div class="empty">No bookmarks yet. Press &#8984;D on any page.</div>';
+      return;
+    }
+    root.innerHTML = '<div class="card" id="list"></div>';
+    const list = root.querySelector('#list');
+    list.innerHTML = marks.map(m =>
+      '<div class="item"><span class="dot"></span><div class="meta" data-url="'+esc(m.url)+'">'
+      + '<div class="t">'+esc(m.title)+'</div><div class="u">'+esc(host(m.url))+'</div></div>'
+      + '<button class="btn danger" data-remove="'+esc(m.url)+'">Remove</button></div>').join('');
+    list.querySelectorAll('.meta').forEach(m => m.onclick = () => post('navigate',{url:m.dataset.url}));
+    list.querySelectorAll('[data-remove]').forEach(b =>
+      b.onclick = () => post('removeBookmark',{url:b.dataset.remove}).then(()=>setTimeout(draw,120)));
+  }
+  draw();
+});
+</script></body></html>

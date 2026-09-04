@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>JSON Formatter</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e6e9ef;--muted:#8b93a7;--accent:#6ea8fe;--bad:#e5695f}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--text:#1b1f27;--muted:#666e7e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;padding:28px}
+h1{font-size:15px;margin:0 0 16px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.pane{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+textarea,pre{width:100%;min-height:60vh;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--text);padding:12px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+pre{overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word}
+textarea:focus{outline:none;border-color:var(--accent)}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+button{padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer;font-size:12px}
+button:hover{border-color:var(--accent);color:var(--accent)}
+.err{color:var(--bad)}
+.muted{color:var(--muted);font-size:12px}
+</style>
+</head><body>
+<h1>JSON Formatter</h1>
+<div class="bar">
+  <button onclick="format(2)">Format</button>
+  <button onclick="format(0)">Minify</button>
+  <button onclick="sortKeys()">Sort keys</button>
+  <span class="muted" id="status"></span>
+</div>
+<div class="pane">
+  <textarea id="in" spellcheck="false" placeholder="Paste JSON here"></textarea>
+  <pre id="out"></pre>
+</div>
+<script>
+const $in=document.getElementById('in'),$out=document.getElementById('out'),$s=document.getElementById('status');
+function parse(){ try{ const v=JSON.parse($in.value); $s.textContent=''; $s.className='muted'; return {ok:true,v}; }
+  catch(e){ $s.textContent=e.message; $s.className='err'; return {ok:false}; } }
+function format(indent){ const r=parse(); if(!r.ok) return;
+  $out.textContent=JSON.stringify(r.v,null,indent);
+  $s.textContent=new Blob([$out.textContent]).size+' bytes'; }
+function deepSort(v){ if(Array.isArray(v)) return v.map(deepSort);
+  if(v&&typeof v==='object') return Object.keys(v).sort().reduce((a,k)=>(a[k]=deepSort(v[k]),a),{}); return v; }
+function sortKeys(){ const r=parse(); if(!r.ok) return; $out.textContent=JSON.stringify(deepSort(r.v),null,2); }
+$in.addEventListener('input',()=>{ if($in.value.trim()) format(2); else $out.textContent=''; });
+$in.focus();
+</script></body></html>

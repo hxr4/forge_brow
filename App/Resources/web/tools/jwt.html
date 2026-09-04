@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>JWT Decoder</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e6e9ef;--muted:#8b93a7;--accent:#6ea8fe;--bad:#e5695f}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--text:#1b1f27;--muted:#666e7e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;padding:28px}
+h1{font-size:15px;margin:0 0 16px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.pane{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+textarea,pre{width:100%;min-height:60vh;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--text);padding:12px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+pre{overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word}
+textarea:focus{outline:none;border-color:var(--accent)}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+button{padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer;font-size:12px}
+button:hover{border-color:var(--accent);color:var(--accent)}
+.err{color:var(--bad)}
+.muted{color:var(--muted);font-size:12px}
+</style>
+</head><body>
+<h1>JWT Decoder</h1>
+<div class="bar"><span class="muted">Decodes locally. Signature is <strong>not</strong> verified and the token never leaves this machine.</span></div>
+<div class="pane">
+  <textarea id="in" spellcheck="false" placeholder="Paste a JWT here"></textarea>
+  <pre id="out"></pre>
+</div>
+<script>
+const $in=document.getElementById('in'),$out=document.getElementById('out');
+function b64url(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='=';
+  return decodeURIComponent(Array.from(atob(s), c=>'%'+c.charCodeAt(0).toString(16).padStart(2,'0')).join('')); }
+function when(ts){ return ts?new Date(ts*1000).toISOString():'—'; }
+function decode(){
+  const t=$in.value.trim(); if(!t){ $out.textContent=''; return; }
+  const parts=t.split('.');
+  if(parts.length<2){ $out.innerHTML='<span class="err">Not a JWT: expected at least two dot-separated segments.</span>'; return; }
+  try{
+    const header=JSON.parse(b64url(parts[0])), payload=JSON.parse(b64url(parts[1]));
+    let notes='';
+    if(payload.exp){ const left=payload.exp*1000-Date.now();
+      notes+='\nexp  '+when(payload.exp)+(left<0?'   [EXPIRED]':'   ['+Math.round(left/60000)+' min left]'); }
+    if(payload.iat) notes+='\niat  '+when(payload.iat);
+    if(payload.nbf) notes+='\nnbf  '+when(payload.nbf);
+    $out.textContent='HEADER\n'+JSON.stringify(header,null,2)
+      +'\n\nPAYLOAD\n'+JSON.stringify(payload,null,2)
+      +(notes?'\n\nCLAIMS'+notes:'')
+      +'\n\nSIGNATURE\n'+(parts[2]||'(none)')+'\n(not verified)';
+  }catch(e){ $out.innerHTML='<span class="err">'+e.message+'</span>'; }
+}
+$in.addEventListener('input',decode); $in.focus();
+</script></body></html>

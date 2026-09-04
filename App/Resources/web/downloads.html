@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Downloads</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = shell('Downloads');
+  async function draw(){
+    const s = await getState();
+    const items = s.downloads || [];
+    if(!items.length){
+      root.innerHTML = '<div class="empty">No downloads this session.</div>';
+      return;
+    }
+    root.innerHTML = '<div class="sect" style="text-align:right"><button class="btn" id="clear">Clear finished</button></div><div class="card" id="list"></div>';
+    root.querySelector('#list').innerHTML = items.map(d => {
+      const state = d.cancelled ? 'Cancelled' : (d.complete ? 'Complete' : d.percent+'%');
+      const bar = d.complete || d.cancelled ? '' :
+        '<div class="bar"><i style="width:'+(d.percent||0)+'%"></i></div>';
+      return '<div class="item"><span class="dot"></span><div class="meta" data-path="'+esc(d.path)+'">'
+        + '<div class="t">'+esc(d.name||host(d.url))+'</div>'
+        + '<div class="u">'+esc(state)+' &middot; '+fmtBytes(d.received)
+        + (d.total ? ' of '+fmtBytes(d.total) : '')+'</div>'+bar+'</div></div>';
+    }).join('');
+    root.querySelectorAll('.meta').forEach(m =>
+      m.onclick = () => m.dataset.path && post('revealDownload',{path:m.dataset.path}));
+    root.querySelector('#clear').onclick = () => post('clearDownloads').then(()=>setTimeout(draw,120));
+  }
+  draw(); setInterval(draw, 1500);
+});
+</script></body></html>

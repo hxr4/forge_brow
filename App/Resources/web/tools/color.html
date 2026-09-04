@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Color</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Color', 'Convert between notations and check contrast against black and white.');
+  root.innerHTML = '<div class="ctl"><input class="small grow" id="in" spellcheck="false" placeholder="#CFE85C, rgb(207,232,92), hsl(72 76% 64%)">'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="swatch" id="sw"></div><div class="card"><dl class="kv" id="out"></dl></div>';
+  const inp=root.querySelector('#in'), out=root.querySelector('#out'),
+        sw=root.querySelector('#sw'), st=root.querySelector('#st');
+  function parse(v){
+    const probe=document.createElement('div'); probe.style.color=''; probe.style.color=v.trim();
+    if(!probe.style.color) return null;
+    document.body.appendChild(probe);
+    const m=getComputedStyle(probe).color.match(/[\d.]+/g);
+    probe.remove();
+    return m ? m.slice(0,3).map(Number) : null;
+  }
+  const toHex = ([r,g,b]) => '#'+[r,g,b].map(x=>Math.round(x).toString(16).padStart(2,'0')).join('').toUpperCase();
+  function toHsl([r,g,b]){
+    r/=255;g/=255;b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
+    let h=0; if(d){ h = mx===r?((g-b)/d+(g<b?6:0)) : mx===g?((b-r)/d+2) : ((r-g)/d+4); h*=60; }
+    const l=(mx+mn)/2, s=d? d/(1-Math.abs(2*l-1)) : 0;
+    return [Math.round(h), Math.round(s*100), Math.round(l*100)];
+  }
+  const lum = ([r,g,b]) => { const f=c=>{c/=255; return c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4)};
+    return .2126*f(r)+.7152*f(g)+.0722*f(b); };
+  const ratio=(a,b)=>{ const L1=Math.max(a,b),L2=Math.min(a,b); return ((L1+.05)/(L2+.05)); };
+  function run(){
+    const c=parse(inp.value);
+    if(!c){ st.textContent=inp.value?'unrecognised':''; st.className='status'+(inp.value?' bad':'');
+      out.innerHTML=''; sw.style.background='transparent'; return; }
+    st.textContent='valid'; st.className='status good';
+    sw.style.background=toHex(c);
+    const h=toHsl(c), L=lum(c);
+    const onBlack=ratio(L,0).toFixed(2), onWhite=ratio(L,1).toFixed(2);
+    out.innerHTML='<dt>hex</dt><dd>'+toHex(c)+'</dd>'
+      +'<dt>rgb</dt><dd>rgb('+c.map(Math.round).join(', ')+')</dd>'
+      +'<dt>hsl</dt><dd>hsl('+h[0]+' '+h[1]+'% '+h[2]+'%)</dd>'
+      +'<dt>on black</dt><dd>'+onBlack+':1 '+(onBlack>=4.5?'&#10003; AA':'&#10007; below AA')+'</dd>'
+      +'<dt>on white</dt><dd>'+onWhite+':1 '+(onWhite>=4.5?'&#10003; AA':'&#10007; below AA')+'</dd>';
+  }
+  inp.addEventListener('input',run); inp.value='#CFE85C'; run(); inp.focus();
+});
+</script></body></html>
