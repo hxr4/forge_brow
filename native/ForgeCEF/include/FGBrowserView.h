@@ -36,6 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL canGoBack;
 @property (nonatomic, readonly) BOOL canGoForward;
 @property (nonatomic, readonly) NSUInteger blockedCountForTab;
+@property (nonatomic, readonly) NSUInteger cosmeticSelectorCount;
 
 @property (nonatomic, assign) FGBypassOptions bypassOptions;
 

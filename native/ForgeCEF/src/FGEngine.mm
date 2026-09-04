@@ -1,5 +1,8 @@
 #import "FGEngine.h"
 
+#import <mach/mach.h>
+#import <libproc.h>
+
 #import "FGAdblock.h"
 #import "FGSchemeHandler.h"
 
@@ -45,6 +48,48 @@ std::string BundleSubpath(NSString* relative) {
 }  // namespace
 
 @implementation FGEngine
+
++ (uint64_t)memoryFootprint {
+  task_vm_info_data_t info;
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) != KERN_SUCCESS) {
+    return 0;
+  }
+  return info.phys_footprint;
+}
+
++ (NSUInteger)helperProcessCount {
+  const int reported = proc_listallpids(NULL, 0);
+  if (reported <= 0) {
+    return 0;
+  }
+  const int capacity = reported + 64;
+  pid_t* pids = (pid_t*)calloc((size_t)capacity, sizeof(pid_t));
+  if (!pids) {
+    return 0;
+  }
+
+  const int bytes = proc_listallpids(pids, (int)(capacity * sizeof(pid_t)));
+  const int found = bytes / (int)sizeof(pid_t);
+  NSUInteger total = 0;
+  char path[PROC_PIDPATHINFO_MAXSIZE];
+
+  for (int index = 0; index < found; index++) {
+    if (pids[index] <= 0) {
+      continue;
+    }
+    if (proc_pidpath(pids[index], path, sizeof(path)) <= 0) {
+      continue;
+    }
+    if (strstr(path, "Forge Helper") != NULL) {
+      total += 1;
+    }
+  }
+
+  free(pids);
+  return total;
+}
+
 
 + (BOOL)startWithConfiguration:(FGEngineConfiguration *)configuration
                           argc:(int)argc

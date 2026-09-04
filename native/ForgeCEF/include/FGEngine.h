@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)quitMessageLoop;
 + (void)shutdown;
 + (NSString *)cefVersion;
++ (uint64_t)memoryFootprint;
++ (NSUInteger)helperProcessCount;
 
 @end
 

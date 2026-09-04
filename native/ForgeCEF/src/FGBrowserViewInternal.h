@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)handleAddressChange:(NSString *)url;
 - (void)handleTitleChange:(NSString *)title;
 - (void)handleFaviconChange:(nullable NSImage *)favicon;
+- (void)handleCosmeticSelectorCount:(NSUInteger)count;
 - (void)handleLoadingState:(BOOL)loading canGoBack:(BOOL)canGoBack canGoForward:(BOOL)canGoForward;
 - (void)handleLoadError:(NSString *)message url:(NSString *)url;
 - (void)handleBrowserCreated;
