@@ -26,6 +26,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private let palette = CommandPaletteController()
     private let findBar = FindBar()
     private let suggestionsView = OmniboxSuggestionsView()
+    private let statsOverlay = StatsOverlayView()
+    private var statsVisible = false
+    private var statsTimer: Timer?
     private var suggestionDebounce: Timer?
     private var suggestionQuery = ""
     private var findVisible = false
@@ -248,6 +251,72 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             self?.acceptSuggestion(suggestion)
         }
         contentContainer.addSubview(suggestionsView, positioned: .above, relativeTo: findBar)
+        contentContainer.addSubview(statsOverlay, positioned: .above, relativeTo: suggestionsView)
+    }
+
+    @objc func handleToggleStats() {
+        statsVisible.toggle()
+        if statsVisible {
+            statsOverlay.isHidden = false
+            statsOverlay.alphaValue = 0
+            refreshStats()
+            Theme.animate(0.16) { self.statsOverlay.animator().alphaValue = 1 }
+            let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshStats() }
+            RunLoop.main.add(timer, forMode: .common)
+            statsTimer = timer
+        } else {
+            statsTimer?.invalidate()
+            statsTimer = nil
+            Theme.animate(0.14) { self.statsOverlay.animator().alphaValue = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                if !self.statsVisible { self.statsOverlay.isHidden = true }
+            }
+        }
+    }
+
+    private func refreshStats() {
+        guard statsVisible, let tab = selectedTab else { return }
+        tab.browserView.evaluate(StatsProbe.script) { [weak self] result in
+            guard let self, self.statsVisible else { return }
+            self.applyStats(page: result as? [String: Any] ?? [:], tab: tab)
+        }
+    }
+
+    private func applyStats(page: [String: Any], tab: Tab) {
+        func number(_ key: String) -> Double { (page[key] as? NSNumber)?.doubleValue ?? 0 }
+        let adblock = FGAdblock.shared
+
+        let entries: [(String, String)] = [
+            ("origin", page["origin"] as? String ?? "—"),
+            ("dom nodes", number("nodes") > 0 ? String(Int(number("nodes"))) : "—"),
+            ("requests", String(Int(number("resources")))),
+            ("transferred", StatsFormat.bytes(number("transferred"))),
+            ("ttfb", StatsFormat.millis(number("ttfb"))),
+            ("dom ready", StatsFormat.millis(number("dcl"))),
+            ("load", StatsFormat.millis(number("load"))),
+            ("js heap", StatsFormat.bytes(number("heap"))),
+            ("subframes", String(Int(number("frames")))),
+            ("blocked here", String(tab.browserView.blockedCountForTab)),
+            ("hidden here", String(tab.browserView.cosmeticSelectorCount)),
+            ("blocked total", String(adblock.blockedCount)),
+            ("popups blocked", String(adblock.blockedPopupCount)),
+            ("filter rules", String(adblock.ruleCount)),
+            ("scriptlets", String(adblock.resourceCount)),
+            ("open tabs", String(tabs.count)),
+            ("helper processes", String(FGEngine.helperProcessCount())),
+            ("browser memory", StatsFormat.bytes(Double(FGEngine.memoryFootprint()))),
+            ("chromium", FGEngine.cefVersion())
+        ]
+        statsOverlay.apply(entries)
+        positionStats()
+    }
+
+    private func positionStats() {
+        let width: CGFloat = 306
+        let height = statsOverlay.preferredHeight
+        statsOverlay.frame = NSRect(x: contentContainer.bounds.width - width - 18,
+                                    y: contentContainer.bounds.height - height - 18,
+                                    width: width, height: height)
     }
 
     private var suggestionAnchor: NSRect {
@@ -529,6 +598,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             if index == selectedIndex { tab.browserView.frame = contentContainer.bounds }
         }
         if findVisible { positionFindBar() }
+        if statsVisible { positionStats() }
         tabStrip.update(with: tabs, selectedIndex: selectedIndex)
         updateToolbarState()
     }
@@ -674,6 +744,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                 },
                 PaletteCommand(id: "devtools", title: "Open DevTools", subtitle: "Chromium DevTools for this tab") { [weak self] in
                     self?.handleShowDevTools()
+                },
+                PaletteCommand(id: "stats", title: "Toggle Stats for Nerds", subtitle: "Live page and engine diagnostics") { [weak self] in
+                    self?.handleToggleStats()
                 },
                 PaletteCommand(id: "home", title: "Open Landing Page", subtitle: "forge://home/") { [weak self] in
                     self?.navigate(to: "forge://home/")

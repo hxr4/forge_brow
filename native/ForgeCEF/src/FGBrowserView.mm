@@ -19,6 +19,7 @@
   NSString* _currentURL;
   NSString* _currentTitle;
   NSImage* _favicon;
+  NSUInteger _cosmeticSelectorCount;
   NSString* _faviconHost;
   BOOL _isLoading;
   BOOL _canGoBack;
@@ -100,6 +101,14 @@
 
 - (NSImage *)favicon {
   return _favicon;
+}
+
+- (NSUInteger)cosmeticSelectorCount {
+  return _cosmeticSelectorCount;
+}
+
+- (void)handleCosmeticSelectorCount:(NSUInteger)count {
+  _cosmeticSelectorCount = count;
 }
 
 - (BOOL)isLoading {

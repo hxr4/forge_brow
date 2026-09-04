@@ -281,6 +281,11 @@ void FGClient::InjectCosmeticFilters(CefRefPtr<CefFrame> frame) {
 
   NSArray* hide = parsed[@"hide"];
   NSString* injectedProbe = parsed[@"script"];
+  const NSUInteger selectorCount = [hide isKindOfClass:NSArray.class] ? hide.count : 0;
+  __weak FGBrowserView* cosmeticOwner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [cosmeticOwner handleCosmeticSelectorCount:selectorCount];
+  });
   NSLog(@"[forge] cosmetic %@ -> %lu selectors, %lu bytes of scriptlet",
         [NSString stringWithUTF8String:url.c_str()],
         (unsigned long)([hide isKindOfClass:NSArray.class] ? hide.count : 0),

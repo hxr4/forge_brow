@@ -164,6 +164,7 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let devMenu = NSMenu(title: "Developer")
         devMenu.addItem(browserItem("Developer Tools", "handleShowDevTools", "i", [.command, .option]))
         devMenu.addItem(browserItem("View Source", "handleViewSource", "u", [.command, .option]))
+        devMenu.addItem(browserItem("Stats for Nerds", "handleToggleStats", "s", [.command, .option]))
         let devItem = item("Developer", nil)
         devItem.submenu = devMenu
         view.addItem(devItem)
