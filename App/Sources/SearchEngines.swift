@@ -4,6 +4,7 @@ struct SearchEngine: Equatable {
     let id: String
     let name: String
     let queryTemplate: String
+    let suggestTemplate: String?
 
     func url(for query: String) -> String {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
@@ -15,13 +16,15 @@ enum SearchEngines {
     static let duckDuckGo = SearchEngine(
         id: "ddg",
         name: "DuckDuckGo",
-        queryTemplate: "https://duckduckgo.com/?q={query}"
+        queryTemplate: "https://duckduckgo.com/?q={query}",
+        suggestTemplate: "https://duckduckgo.com/ac/?q={query}&type=list"
     )
 
     static let brave = SearchEngine(
         id: "brave",
         name: "Brave Search",
-        queryTemplate: "https://search.brave.com/search?q={query}"
+        queryTemplate: "https://search.brave.com/search?q={query}",
+        suggestTemplate: "https://search.brave.com/api/suggest?q={query}"
     )
 
     static let all: [SearchEngine] = [duckDuckGo, brave]

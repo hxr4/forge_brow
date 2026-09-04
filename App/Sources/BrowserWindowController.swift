@@ -23,6 +23,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     private let palette = CommandPaletteController()
     private let findBar = FindBar()
+    private let suggestionsView = OmniboxSuggestionsView()
+    private var suggestionDebounce: Timer?
+    private var suggestionQuery = ""
     private var findVisible = false
     private var stateTimer: Timer?
 
@@ -102,6 +105,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
         buildToolbar()
         buildFindBar()
+        buildSuggestions()
         orientation = orientation
     }
 
@@ -176,6 +180,73 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         contentContainer.addSubview(findBar, positioned: .above, relativeTo: nil)
+    }
+
+    private func buildSuggestions() {
+        suggestionsView.onPick = { [weak self] suggestion in
+            self?.acceptSuggestion(suggestion)
+        }
+        contentContainer.addSubview(suggestionsView, positioned: .above, relativeTo: findBar)
+    }
+
+    private var suggestionAnchor: NSRect {
+        toolbarView.convert(addressBox.frame, to: contentContainer)
+    }
+
+    private func acceptSuggestion(_ suggestion: Suggestion) {
+        suggestionsView.dismiss()
+        SuggestionEngine.shared.cancel()
+        addressField.stringValue = ForgeURL.display(for: suggestion.target)
+        navigate(to: suggestion.target)
+        window?.makeFirstResponder(nil)
+    }
+
+    private func refreshSuggestions() {
+        let query = addressField.stringValue.trimmingCharacters(in: .whitespaces)
+        suggestionQuery = query
+
+        guard !query.isEmpty else {
+            SuggestionEngine.shared.cancel()
+            suggestionsView.dismiss()
+            return
+        }
+
+        var items = [primarySuggestion(for: query)]
+        items.append(contentsOf: SuggestionEngine.shared.local(for: query))
+        suggestionsView.present(items, anchor: suggestionAnchor)
+
+        suggestionDebounce?.invalidate()
+        suggestionDebounce = Timer.scheduledTimer(withTimeInterval: 0.14, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            SuggestionEngine.shared.remote(for: query) { [weak self] phrases in
+                guard let self, self.suggestionQuery == query, !phrases.isEmpty else { return }
+                var merged = [self.primarySuggestion(for: query)]
+                merged.append(contentsOf: SuggestionEngine.shared.local(for: query, limit: 3))
+                let engine = SearchEngines.current
+                for phrase in phrases where phrase.lowercased() != query.lowercased() {
+                    merged.append(Suggestion(kind: .search,
+                                             title: phrase,
+                                             subtitle: engine.name,
+                                             target: engine.url(for: phrase)))
+                }
+                self.suggestionsView.present(Array(merged.prefix(9)), anchor: self.suggestionAnchor)
+            }
+        }
+    }
+
+    private func primarySuggestion(for query: String) -> Suggestion {
+        let engine = SearchEngines.current
+        let resolved = AddressResolver.resolve(query)
+        if resolved == engine.url(for: query) {
+            return Suggestion(kind: .search,
+                              title: query,
+                              subtitle: "Search with " + engine.name,
+                              target: resolved)
+        }
+        return Suggestion(kind: .navigate,
+                          title: ForgeURL.display(for: resolved),
+                          subtitle: "Open directly",
+                          target: resolved)
     }
 
     private func positionFindBar() {
@@ -452,6 +523,12 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     @objc private func handleAddressSubmit() {
+        if let selection = suggestionsView.selected, suggestionsView.isPresenting {
+            acceptSuggestion(selection)
+            return
+        }
+        suggestionsView.dismiss()
+        SuggestionEngine.shared.cancel()
         let resolved = AddressResolver.resolve(addressField.stringValue)
         selectedTab?.browserView.loadURL(resolved)
         window?.makeFirstResponder(nil)
@@ -473,7 +550,35 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     func navigate(to url: String) { selectedTab?.browserView.loadURL(url) }
 
     func controlTextDidBeginEditing(_ obj: Notification) { addressBox.isFocused = true }
-    func controlTextDidEndEditing(_ obj: Notification) { addressBox.isFocused = false }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as AnyObject?) === addressField else { return }
+        refreshSuggestions()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        addressBox.isFocused = false
+        suggestionDebounce?.invalidate()
+        SuggestionEngine.shared.cancel()
+        suggestionsView.dismiss()
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard control === addressField, suggestionsView.isPresenting else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.moveDown(_:)):
+            suggestionsView.move(by: 1)
+            return true
+        case #selector(NSResponder.moveUp(_:)):
+            suggestionsView.move(by: -1)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            suggestionsView.dismiss()
+            return true
+        default:
+            return false
+        }
+    }
 
     override func windowDidLoad() {
         super.windowDidLoad()
