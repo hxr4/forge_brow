@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timestamp</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Timestamp', 'Unix seconds and milliseconds, ISO 8601, and local time.');
+  root.innerHTML = '<div class="ctl"><input class="small grow" id="in" spellcheck="false" placeholder="1735689600, 1735689600000, or 2025-01-01T00:00:00Z">'
+    + '<button class="btn" id="now">Now</button><span class="status" id="st"></span></div>'
+    + '<div class="card"><dl class="kv" id="out"></dl></div>';
+  const inp=root.querySelector('#in'), out=root.querySelector('#out'), st=root.querySelector('#st');
+  function parse(v){
+    v=v.trim(); if(!v) return null;
+    if(/^\d{1,10}$/.test(v)) return new Date(parseInt(v,10)*1000);
+    if(/^\d{11,16}$/.test(v)) return new Date(parseInt(v,10));
+    const d=new Date(v); return isNaN(d) ? null : d;
+  }
+  function run(){
+    const d=parse(inp.value);
+    if(!d){ out.innerHTML='<dt>&mdash;</dt><dd style="color:var(--muted)">Unrecognised input</dd>';
+      st.textContent=inp.value?'unparsed':''; st.className='status'+(inp.value?' bad':''); return; }
+    st.textContent='valid'; st.className='status good';
+    const rel=Math.round((d-Date.now())/1000);
+    const relTxt = Math.abs(rel)<60 ? rel+'s' : Math.abs(rel)<3600 ? Math.round(rel/60)+'m'
+      : Math.abs(rel)<86400 ? Math.round(rel/3600)+'h' : Math.round(rel/86400)+'d';
+    out.innerHTML =
+      '<dt>unix (s)</dt><dd>'+Math.floor(d.getTime()/1000)+'</dd>'
+     +'<dt>unix (ms)</dt><dd>'+d.getTime()+'</dd>'
+     +'<dt>ISO 8601</dt><dd>'+d.toISOString()+'</dd>'
+     +'<dt>local</dt><dd>'+d.toString()+'</dd>'
+     +'<dt>UTC</dt><dd>'+d.toUTCString()+'</dd>'
+     +'<dt>relative</dt><dd>'+(rel>=0?'in ':'')+relTxt+(rel<0?' ago':'')+'</dd>';
+  }
+  root.querySelector('#now').onclick=()=>{ inp.value=Math.floor(Date.now()/1000); run(); };
+  inp.addEventListener('input',run);
+  inp.value=Math.floor(Date.now()/1000); run(); inp.focus();
+});
+</script></body></html>

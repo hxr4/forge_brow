@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Gradient</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Gradient', 'Linear and radial CSS gradients with a live preview.');
+  root.innerHTML = '<div class="ctl">'
+    + '<select id="type"><option value="linear">linear</option><option value="radial">radial</option></select>'
+    + '<input class="small" type="number" id="ang" value="160" style="width:90px"> deg'
+    + '<input class="small" type="color" id="c1" value="#96965A" style="width:56px;padding:3px">'
+    + '<input class="small" type="color" id="c2" value="#CFE85C" style="width:56px;padding:3px">'
+    + '<input class="small" type="color" id="c3" value="#0C0E0B" style="width:56px;padding:3px">'
+    + '<label class="chk"><input type="checkbox" id="use3"> three stops</label>'
+    + '<span class="status" id="st"></span></div>'
+    + '<div class="swatch" id="sw" style="height:240px"></div>'
+    + '<pre class="out short" id="out" style="min-height:0;padding:16px"></pre>';
+  const q=id=>root.querySelector(id);
+  function run(){
+    const three=q('#use3').checked;
+    const stops=[q('#c1').value, q('#c2').value].concat(three?[q('#c3').value]:[]).join(', ');
+    const css = q('#type').value==='linear'
+      ? 'linear-gradient('+q('#ang').value+'deg, '+stops+')'
+      : 'radial-gradient(circle at 50% 40%, '+stops+')';
+    q('#sw').style.background=css;
+    q('#out').textContent='background: '+css+';';
+    q('#st').textContent=(three?3:2)+' stops';
+  }
+  ['#type','#ang','#c1','#c2','#c3','#use3'].forEach(s=>q(s).addEventListener('input',run));
+  run();
+  q('#out').after(copyBtn(()=>q('#out').textContent));
+});
+</script></body></html>

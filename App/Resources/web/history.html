@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>History</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', async () => {
+  const root = shell('History');
+  root.innerHTML = '<div class="sect"><input type="search" id="q" placeholder="Search history"></div><div id="list"></div>';
+  const s = await getState();
+  const all = s.history || [];
+  const list = root.querySelector('#list');
+
+  function render(filter){
+    const f = (filter||'').toLowerCase();
+    const rows = all.filter(h => !f || (h.title||'').toLowerCase().includes(f) || (h.url||'').toLowerCase().includes(f));
+    if(!rows.length){ list.innerHTML = '<div class="empty">Nothing here yet.</div>'; return; }
+    let out = '', lastDay = '';
+    rows.forEach(h => {
+      const d = new Date(h.at);
+      const day = d.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'});
+      if(day !== lastDay){ out += '<div class="day">'+esc(day)+'</div>'; lastDay = day; }
+      out += '<div class="item"><span class="dot"></span><div class="meta" data-url="'+esc(h.url)+'">'
+           + '<div class="t">'+esc(h.title||h.url)+'</div><div class="u">'+esc(host(h.url))
+           + ' &middot; '+d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})+'</div></div></div>';
+    });
+    list.innerHTML = out;
+    list.querySelectorAll('.meta').forEach(m => m.onclick = () => post('navigate',{url:m.dataset.url}));
+  }
+  render('');
+  root.querySelector('#q').addEventListener('input', e => render(e.target.value));
+});
+</script></body></html>

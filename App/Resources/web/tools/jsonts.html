@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>JSON to TypeScript</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('JSON &#8594; TypeScript', 'Infers interfaces from a sample payload. Optional fields are not inferred from one sample.');
+  root.innerHTML = '<div class="ctl"><input class="small" id="name" value="Root" style="width:150px">'
+    + '<button class="btn" id="go">Generate</button><span class="status" id="st"></span></div>'
+    + '<div class="panes"><textarea id="a" spellcheck="false" placeholder="Paste JSON"></textarea>'
+    + '<pre class="out" id="out"></pre></div>';
+  const a=root.querySelector('#a'), out=root.querySelector('#out'), st=root.querySelector('#st');
+  const pascal = s => s.replace(/(^|[_\-\s]+)(\w)/g,(m,x,c)=>c.toUpperCase()).replace(/\W/g,'');
+  const safeKey = k => /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k);
+  function typeOf(v, name, acc){
+    if(v===null) return 'null';
+    if(Array.isArray(v)){
+      if(!v.length) return 'unknown[]';
+      const inner=[...new Set(v.map(x=>typeOf(x,name,acc)))];
+      return (inner.length===1?inner[0]:'('+inner.join(' | ')+')')+'[]';
+    }
+    if(typeof v==='object'){
+      const iface=pascal(name)||'Node';
+      let body='export interface '+iface+' {\n';
+      for(const k in v) body+='  '+safeKey(k)+': '+typeOf(v[k], k, acc)+';\n';
+      body+='}';
+      if(!acc.some(x=>x===body)) acc.push(body);
+      return iface;
+    }
+    return typeof v==='number' ? 'number' : typeof v==='boolean' ? 'boolean' : 'string';
+  }
+  function run(){
+    if(!a.value.trim()){ out.textContent=''; st.textContent=''; return; }
+    let parsed; try{ parsed=JSON.parse(a.value); }
+    catch(e){ st.textContent=e.message; st.className='status bad'; return; }
+    const acc=[]; const rootName=root.querySelector('#name').value||'Root';
+    const t=typeOf(parsed, rootName, acc);
+    out.textContent = acc.length ? acc.reverse().join('\n\n') : 'export type '+pascal(rootName)+' = '+t+';';
+    st.textContent=acc.length+' interface'+(acc.length===1?'':'s'); st.className='status good';
+  }
+  root.querySelector('#go').onclick=run; a.addEventListener('input',run);
+  a.value='{\n  "id": 7,\n  "name": "Forge",\n  "tags": ["dev","browser"],\n  "owner": { "handle": "hari", "verified": true }\n}';
+  run(); a.focus();
+});
+</script></body></html>

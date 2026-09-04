@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Utility Belt</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', async () => {
+  const root = shell('Utility Belt');
+  const s = await getState();
+  const tools = s.tools || [];
+  const groups = {};
+  tools.forEach(t => { (groups[t.group||'Tools'] = groups[t.group||'Tools'] || []).push(t); });
+  root.innerHTML =
+    '<p style="color:var(--muted);font-size:13px;margin:-18px 0 30px;max-width:62ch">'
+    + 'Every tool runs locally with no network access. Nothing you paste here leaves this machine, '
+    + 'which is the point &mdash; these exist so you stop pasting tokens into strangers\' websites.</p>'
+    + Object.keys(groups).map(g =>
+        '<div class="sect"><h2>'+esc(g)+'</h2><div class="card">'
+        + groups[g].map(t => '<div class="item"><span class="dot"></span>'
+            + '<div class="meta" data-url="'+esc(t.url)+'"><div class="t">'+esc(t.name)+'</div></div></div>').join('')
+        + '</div></div>').join('');
+  root.querySelectorAll('.meta').forEach(m => m.onclick = () => location.href = m.dataset.url);
+});
+</script></body></html>

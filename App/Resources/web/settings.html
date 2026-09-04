@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Settings</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', async () => {
+  const root = shell('Settings');
+  const s = await getState();
+  const engines = (s.searchEngines||[]).map(e =>
+    '<button data-engine="'+esc(e.id)+'" class="'+(e.id===s.currentSearchEngine?'on':'')+'">'+esc(e.name)+'</button>').join('');
+  const orient = s.tabOrientation || 'horizontal';
+  const ab = s.adblock || {}, st = s.stats || {};
+
+  root.innerHTML =
+   '<div class="sect"><h2>Search</h2><div class="card">'
+   + '<div class="row"><div><div class="lab">Default search engine</div>'
+   + '<div class="sub">A third provider is still unconfirmed and intentionally not guessed.</div></div>'
+   + '<div class="seg" id="engines">'+engines+'</div></div></div></div>'
+
+   + '<div class="sect"><h2>Appearance</h2><div class="card">'
+   + '<div class="row"><div><div class="lab">Tab layout</div>'
+   + '<div class="sub">Also toggles with &#8984;&#8679;E.</div></div>'
+   + '<div class="seg" id="orient">'
+   + '<button data-o="horizontal" class="'+(orient==='horizontal'?'on':'')+'">Horizontal</button>'
+   + '<button data-o="vertical" class="'+(orient==='vertical'?'on':'')+'">Vertical</button>'
+   + '</div></div></div></div>'
+
+   + '<div class="sect"><h2>Privacy &amp; blocking</h2><div class="card">'
+   + '<div class="row"><div><div class="lab">Filter rules loaded</div>'
+   + '<div class="sub">EasyList + EasyPrivacy, parsed by adblock-rust at launch.</div></div>'
+   + '<div class="lab">'+(ab.ruleCount||0).toLocaleString()+'</div></div>'
+   + '<div class="row"><div><div class="lab">Blocked all-time</div>'
+   + '<div class="sub">Exact count. Bandwidth and time figures elsewhere are estimates.</div></div>'
+   + '<div class="lab">'+(st.lifetimeBlocked||0).toLocaleString()+'</div></div>'
+   + '<div class="row"><div><div class="lab">Browsing history</div>'
+   + '<div class="sub">Stored locally in Application Support. Never leaves this machine.</div></div>'
+   + '<button class="btn danger" id="clearHistory">Clear history</button></div>'
+   + '</div></div>'
+
+   + '<div class="sect"><h2>About</h2><div class="card">'
+   + '<div class="row"><div class="lab">Engine</div><div class="sub">CEF '+esc(s.cefVersion||'?')+'</div></div>'
+   + '<div class="row"><div class="lab">Renderer sandbox</div><div class="sub">Enabled</div></div>'
+   + '</div></div>';
+
+  root.querySelectorAll('#engines button').forEach(b =>
+    b.onclick = () => post('setSearchEngine',{id:b.dataset.engine}).then(()=>location.reload()));
+  root.querySelectorAll('#orient button').forEach(b =>
+    b.onclick = () => post('setTabOrientation',{value:b.dataset.o}).then(()=>{
+      root.querySelectorAll('#orient button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); }));
+  root.querySelector('#clearHistory').onclick = () => {
+    post('clearHistory').then(()=>{ root.querySelector('#clearHistory').textContent = 'Cleared'; });
+  };
+});
+</script></body></html>

@@ -1,0 +1,44 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>UUID Generator</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e6e9ef;--muted:#8b93a7;--accent:#6ea8fe;--bad:#e5695f}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--text:#1b1f27;--muted:#666e7e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;padding:28px}
+h1{font-size:15px;margin:0 0 16px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.pane{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+textarea,pre{width:100%;min-height:60vh;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--text);padding:12px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+pre{overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word}
+textarea:focus{outline:none;border-color:var(--accent)}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+button{padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer;font-size:12px}
+button:hover{border-color:var(--accent);color:var(--accent)}
+.err{color:var(--bad)}
+.muted{color:var(--muted);font-size:12px}
+</style>
+</head><body>
+<h1>UUID Generator</h1>
+<div class="bar">
+  <button onclick="gen()">Generate</button>
+  <label class="muted">count <input id="n" type="number" value="10" min="1" max="500"
+    style="width:64px;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:4px"></label>
+  <label class="muted"><input id="up" type="checkbox"> uppercase</label>
+  <button onclick="copyAll()">Copy all</button>
+  <span class="muted" id="status"></span>
+</div>
+<pre id="out"></pre>
+<script>
+function uuid(){ return (crypto.randomUUID)?crypto.randomUUID():
+  ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16)); }
+function gen(){
+  const n=Math.min(500,Math.max(1,parseInt(document.getElementById('n').value)||10));
+  const up=document.getElementById('up').checked;
+  const list=Array.from({length:n},()=>up?uuid().toUpperCase():uuid());
+  document.getElementById('out').textContent=list.join('\n');
+  document.getElementById('status').textContent=n+' generated';
+}
+function copyAll(){ navigator.clipboard.writeText(document.getElementById('out').textContent)
+  .then(()=>document.getElementById('status').textContent='copied')
+  .catch(()=>document.getElementById('status').textContent='clipboard unavailable'); }
+gen();
+</script></body></html>

@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Hash</title>
+<link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const root = toolShell('Hash', 'SHA family via the platform crypto engine. Computed locally.');
+  root.innerHTML = '<div class="ctl"><span class="status" id="st"></span></div>'
+    + '<div class="panes one"><textarea id="a" style="min-height:22vh" spellcheck="false" placeholder="Text to hash"></textarea></div>'
+    + '<div class="sect" style="margin-top:16px"><div class="card"><dl class="kv" id="out"></dl></div></div>';
+  const a=root.querySelector('#a'), out=root.querySelector('#out');
+  const algos=['SHA-1','SHA-256','SHA-384','SHA-512'];
+  const hex = buf => [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  async function run(){
+    if(!a.value){ out.innerHTML='<dt>&mdash;</dt><dd style="color:var(--muted)">Type something above</dd>'; return; }
+    const data=new TextEncoder().encode(a.value);
+    let html='';
+    for(const alg of algos){
+      const d=await crypto.subtle.digest(alg, data);
+      html+='<dt>'+alg+'</dt><dd>'+hex(d)+'</dd>';
+    }
+    out.innerHTML=html;
+    root.querySelector('#st').textContent=data.length+' bytes in';
+  }
+  a.addEventListener('input', run); run(); a.focus();
+});
+</script></body></html>

@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forge</title>
+<style>
+:root{
+  --void:#000000; --ink:#070806; --panel:#0C0E0B; --panel2:#11140E;
+  --line:#1E2318; --line2:#2C3322;
+  --moss:#96965A; --moss-deep:#585738; --moss-lift:#B3B472;
+  --acid:#CFE85C; --acid-hot:#E4FF6A;
+  --cream:#F4F2E7; --bone:#B9BBA8; --muted:#6B6F5E;
+  --warn:#FF8A3D;
+  --hunt:0;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--void); color:var(--cream);
+  font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(900px 520px at 50% -8%, rgba(150,150,90,.13), transparent 70%),
+    radial-gradient(600px 400px at 88% 8%, rgba(207,232,92,.055), transparent 70%);
+}
+body::after{
+  content:''; position:fixed; left:50%; top:46%; transform:translate(-50%,-50%);
+  width:min(1500px, 128vw); aspect-ratio:1600/900; pointer-events:none; z-index:0;
+  background:url('/wordmark.png') center/contain no-repeat;
+  opacity:.10;
+  -webkit-mask-image:radial-gradient(ellipse 62% 58% at 50% 50%, #000 30%, transparent 78%);
+          mask-image:radial-gradient(ellipse 62% 58% at 50% 50%, #000 30%, transparent 78%);
+}
+.wrap{position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:40px 30px 72px}
+
+/* ---------- entrance ---------- */
+@keyframes rise{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+.rise{opacity:0; animation:rise .7s var(--ease) forwards}
+.d1{animation-delay:.04s}.d2{animation-delay:.12s}.d3{animation-delay:.2s}.d4{animation-delay:.28s}
+
+/* ---------- hero ---------- */
+.hero{display:grid; grid-template-columns:1fr auto; gap:28px; align-items:center; margin-bottom:34px}
+.clockCol{min-width:0}
+.mark{
+  display:flex; align-items:center; gap:9px; margin-bottom:14px;
+  font-weight:900; font-size:12px; letter-spacing:.34em; text-transform:uppercase;
+  color:var(--moss-lift); transform:skewX(-8deg);
+  text-shadow:0 0 14px rgba(207,232,92,.4), 0 0 34px rgba(207,232,92,.16);
+}
+.mark i{width:20px;height:2px;background:var(--acid);box-shadow:0 0 10px var(--acid);display:inline-block}
+.clock{
+  font-size:104px; line-height:.9; font-weight:250; letter-spacing:-4px;
+  font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:6px;
+  background:linear-gradient(176deg,var(--cream) 6%,var(--moss-lift) 62%,var(--moss-deep) 108%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 0 26px rgba(207,232,92,.2));
+}
+.clock .sep{animation:tick 2s steps(1,end) infinite; margin:0 -2px}
+@keyframes tick{0%,50%{opacity:1}51%,100%{opacity:.42}}
+.mer{font-size:22px; font-weight:600; letter-spacing:2px; color:var(--moss); align-self:center; margin-left:8px}
+.dateline{margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.date{font-size:15px; color:var(--bone); letter-spacing:.02em}
+.sec{height:2px; flex:1; min-width:90px; max-width:230px; background:var(--line); border-radius:2px; overflow:hidden}
+.sec i{display:block; height:100%; background:linear-gradient(90deg,var(--moss),var(--acid));
+  box-shadow:0 0 10px rgba(207,232,92,.55); transition:width .95s linear}
+.weather{margin-top:7px; font-size:11.5px; color:var(--muted)}
+
+/* ---------- cat ---------- */
+.catCol{width:236px; display:flex; justify-content:center}
+.cat{width:236px; height:262px; overflow:visible;
+  filter:drop-shadow(0 0 calc(16px + var(--hunt)*26px) rgba(207,232,92,calc(.16 + var(--hunt)*.34)))}
+.cat .tail{transform-origin:196px 246px; animation:sway 5.2s var(--ease) infinite}
+@keyframes sway{0%,100%{transform:rotate(0deg)}30%{transform:rotate(-7deg)}62%{transform:rotate(5deg)}}
+.cat .lid{transform-origin:center; transform:scaleY(0); transition:transform .09s ease}
+.cat.blink .lid{transform:scaleY(1)}
+.cat .ear{transform-origin:120px 96px; transition:transform .4s var(--ease)}
+.cat.perk .ear{transform:rotate(-3deg) translateY(-3px)}
+.cat .pupil,.cat .glint{transition:transform .55s var(--ease)}
+.cat .iris{transition:filter .8s var(--ease)}
+.catBase{cursor:default}
+
+/* ---------- search ---------- */
+.searchRow{position:relative; margin-bottom:12px}
+#q{
+  width:100%; padding:16px 18px 16px 46px; border-radius:13px;
+  border:1px solid var(--line2); background:linear-gradient(180deg,var(--panel2),var(--panel));
+  color:var(--cream); font-size:15.5px; outline:none;
+  transition:border-color .28s var(--ease), box-shadow .28s var(--ease), transform .28s var(--ease);
+}
+#q::placeholder{color:var(--muted)}
+#q:focus{border-color:var(--moss); box-shadow:0 0 0 3px rgba(150,150,90,.12), 0 0 30px rgba(207,232,92,.14); transform:translateY(-1px)}
+.searchRow .paw{position:absolute; left:17px; top:50%; transform:translateY(-50%); width:17px; height:17px; opacity:.5; pointer-events:none}
+.engines{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:38px}
+.chip{
+  padding:6px 14px; border-radius:999px; border:1px solid var(--line2);
+  background:transparent; color:var(--muted); cursor:pointer; font-size:11.5px; font-weight:500;
+  letter-spacing:.02em; transition:all .26s var(--ease);
+}
+.chip:hover{color:var(--bone); border-color:var(--moss-deep); transform:translateY(-1px)}
+.chip.on{color:var(--acid); border-color:var(--moss); background:rgba(150,150,90,.1);
+  box-shadow:0 0 16px rgba(207,232,92,.18)}
+.chip.todo{border-style:dashed; opacity:.5; cursor:default}
+.chip.todo:hover{transform:none; color:var(--muted); border-color:var(--line2)}
+
+/* ---------- sections ---------- */
+.sec-h{display:flex; align-items:center; gap:12px; margin:0 0 14px}
+.sec-h h2{margin:0; font-size:10.5px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--muted)}
+.sec-h .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--line2),transparent)}
+.sec-h .act{font-size:11px; color:var(--muted); cursor:pointer; transition:color .24s var(--ease)}
+.sec-h .act:hover{color:var(--acid)}
+
+.trayTabs{display:flex; gap:5px; margin-bottom:14px}
+.tt{padding:6px 15px; border-radius:9px; border:1px solid transparent; background:transparent;
+  color:var(--muted); font-size:12px; font-weight:600; cursor:pointer; letter-spacing:.03em;
+  transition:all .26s var(--ease)}
+.tt:hover{color:var(--bone)}
+.tt.on{color:var(--acid); border-color:var(--line2); background:var(--panel);
+  box-shadow:inset 0 0 22px rgba(150,150,90,.09)}
+.tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:40px}
+.tile{
+  display:flex; flex-direction:column; gap:5px; padding:15px 16px; border-radius:12px;
+  border:1px solid var(--line); background:linear-gradient(180deg,var(--panel2),var(--panel));
+  color:var(--cream); text-decoration:none; cursor:pointer; position:relative; overflow:hidden;
+  transition:transform .3s var(--ease), border-color .3s var(--ease), box-shadow .3s var(--ease);
+}
+.tile::after{content:''; position:absolute; inset:0; opacity:0; pointer-events:none;
+  background:radial-gradient(160px 90px at 50% 118%, rgba(207,232,92,.2), transparent 72%);
+  transition:opacity .34s var(--ease)}
+.tile:hover{transform:translateY(-3px); border-color:var(--moss-deep);
+  box-shadow:0 10px 30px rgba(0,0,0,.6), 0 0 24px rgba(207,232,92,.08)}
+.tile:hover::after{opacity:1}
+.tile:active{transform:translateY(-1px)}
+.tile .t{font-size:13.5px; font-weight:600; letter-spacing:.01em}
+.tile .u{font-size:10.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tile.empty{border-style:dashed; opacity:.34}
+
+.lower{display:grid; grid-template-columns:1.15fr 1fr 1fr; gap:14px}
+.panel{border:1px solid var(--line); border-radius:14px; padding:18px 19px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel))}
+
+.portGrid{display:flex; flex-wrap:wrap; gap:6px}
+.port{display:inline-flex; align-items:baseline; gap:6px; padding:6px 11px; border-radius:8px;
+  border:1px solid var(--line2); background:var(--void); cursor:pointer;
+  transition:all .26s var(--ease)}
+.port:hover{border-color:var(--moss); transform:translateY(-2px); box-shadow:0 0 18px rgba(207,232,92,.14)}
+.port b{font-size:12.5px; font-weight:700; color:var(--acid); font-variant-numeric:tabular-nums}
+.port span{font-size:10px; color:var(--muted); max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.more{font-size:11px; color:var(--muted); cursor:pointer; padding:6px 4px; transition:color .24s}
+.more:hover{color:var(--acid)}
+
+.statRow{display:flex; justify-content:space-between; align-items:baseline; padding:8px 0}
+.statRow+.statRow{border-top:1px solid var(--line)}
+.statRow .k{font-size:12px; color:var(--bone)}
+.statRow .k em{font-style:normal; font-size:9.5px; color:var(--muted); margin-left:5px;
+  border:1px solid var(--line2); padding:1px 4px; border-radius:4px}
+.statRow .v{font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; color:var(--cream)}
+.statRow.hero-stat .v{font-size:21px; color:var(--acid); text-shadow:0 0 18px rgba(207,232,92,.42)}
+.since{margin-top:12px; padding-top:11px; border-top:1px solid var(--line);
+  font-size:10.5px; color:var(--muted); display:flex; align-items:center; gap:6px}
+
+.toolGrid{display:grid; grid-template-columns:repeat(2,1fr); gap:7px}
+.tool{padding:10px 12px; border-radius:9px; border:1px solid var(--line); background:var(--void);
+  color:var(--bone); text-decoration:none; font-size:11.5px; font-weight:500;
+  transition:all .26s var(--ease); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tool:hover{color:var(--acid); border-color:var(--moss-deep); transform:translateY(-2px)}
+
+.empty{color:var(--muted); font-size:12px; padding:4px 0}
+.note{color:var(--warn); font-size:11px; margin-top:10px}
+.foot{margin-top:44px; text-align:center; font-size:10px; color:#3E4237; letter-spacing:.1em}
+@media(max-width:900px){.lower{grid-template-columns:1fr}.hero{grid-template-columns:1fr}.catCol{display:none}.tiles{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="clockCol rise d1">
+      <div class="mark"><i></i>Forge</div>
+      <div class="clock"><span id="hh">--</span><span class="sep">:</span><span id="mm">--</span><span class="mer" id="mer"></span></div>
+      <div class="dateline">
+        <div class="date" id="date"></div>
+        <div class="sec"><i id="secbar" style="width:0%"></i></div>
+      </div>
+      <div class="weather" id="weather">Weather offline — add an AccuWeather key to config/forge.env</div>
+    </div>
+
+    <div class="catCol rise d2">
+      <svg class="cat" id="cat" viewBox="0 0 240 268" aria-hidden="true">
+        <defs>
+          <radialGradient id="halo" cx="50%" cy="46%" r="52%">
+            <stop offset="0" stop-color="#96965A" stop-opacity=".24"/>
+            <stop offset=".55" stop-color="#585738" stop-opacity=".10"/>
+            <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#191D11"/><stop offset="1" stop-color="#070905"/>
+          </linearGradient>
+          <linearGradient id="eye" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#E4FF6A"/><stop offset=".5" stop-color="#A8AC5E"/><stop offset="1" stop-color="#4A4C2C"/>
+          </linearGradient>
+          <linearGradient id="chest" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F7F5EC"/><stop offset="1" stop-color="#B9BBA8"/>
+          </linearGradient>
+          <filter id="eyeglow" x="-90%" y="-90%" width="280%" height="280%">
+            <feGaussianBlur stdDeviation="4.2" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <ellipse cx="120" cy="140" rx="118" ry="126" fill="url(#halo)"/>
+
+        <path class="tail" d="M186 258 C 230 234, 238 172, 210 138"
+              stroke="url(#fur)" stroke-width="16" fill="none" stroke-linecap="round"/>
+        <path class="tail" d="M186 258 C 230 234, 238 172, 210 138"
+              stroke="rgba(150,150,90,.30)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+
+        <path d="M120 104 L54 262 L186 262 Z" fill="url(#fur)" stroke="rgba(150,150,90,.34)" stroke-width="1.3"/>
+        <path d="M120 150 L100 262 L140 262 Z" fill="url(#chest)" opacity=".96"/>
+
+        <g class="ear">
+          <path d="M66 40 L74 106 L110 70 Z" fill="url(#fur)" stroke="rgba(150,150,90,.34)" stroke-width="1.3"/>
+          <path d="M174 40 L166 106 L130 70 Z" fill="url(#fur)" stroke="rgba(150,150,90,.34)" stroke-width="1.3"/>
+          <path d="M76 58 L81 96 L100 74 Z" fill="#3A4024" opacity=".9"/>
+          <path d="M164 58 L159 96 L140 74 Z" fill="#3A4024" opacity=".9"/>
+        </g>
+
+        <ellipse cx="120" cy="106" rx="72" ry="57" fill="url(#fur)" stroke="rgba(150,150,90,.40)" stroke-width="1.4"/>
+        <path d="M120 112 L104 148 C 110 158, 130 158, 136 148 Z" fill="url(#chest)"/>
+
+        <g class="eyeL" filter="url(#eyeglow)">
+          <circle cx="92" cy="102" r="22" fill="#0A0C07"/>
+          <circle class="iris" cx="92" cy="102" r="18.5" fill="url(#eye)"/>
+          <ellipse class="pupil" cx="92" cy="102" rx="5.2" ry="15" fill="#050603"/>
+          <circle class="glint" cx="98.5" cy="94.5" r="3.4" fill="#FFFFFF"/>
+          <rect class="lid" x="69" y="79" width="46" height="46" rx="4" fill="url(#fur)"/>
+        </g>
+        <g class="eyeR" filter="url(#eyeglow)">
+          <circle cx="148" cy="102" r="22" fill="#0A0C07"/>
+          <circle class="iris" cx="148" cy="102" r="18.5" fill="url(#eye)"/>
+          <ellipse class="pupil" cx="148" cy="102" rx="5.2" ry="15" fill="#050603"/>
+          <circle class="glint" cx="154.5" cy="94.5" r="3.4" fill="#FFFFFF"/>
+          <rect class="lid" x="125" y="79" width="46" height="46" rx="4" fill="url(#fur)"/>
+        </g>
+
+        <g stroke="#0B0D07" stroke-width="2.4" stroke-linecap="round">
+          <line x1="114" y1="128" x2="126" y2="137"/><line x1="126" y1="128" x2="114" y2="137"/>
+        </g>
+        <g fill="#0B0D07" opacity=".7">
+          <circle cx="108" cy="134" r="1.4"/><circle cx="105" cy="140" r="1.4"/><circle cx="112" cy="142" r="1.4"/>
+          <circle cx="132" cy="134" r="1.4"/><circle cx="135" cy="140" r="1.4"/><circle cx="128" cy="142" r="1.4"/>
+        </g>
+        <g stroke="#F4F2E7" stroke-width="1.4" stroke-linecap="round" opacity=".8" fill="none">
+          <path d="M100 130 C 70 125, 46 116, 26 106"/>
+          <path d="M100 138 C 70 141, 46 141, 22 138"/>
+          <path d="M140 130 C 170 125, 194 116, 214 106"/>
+          <path d="M140 138 C 170 141, 194 141, 218 138"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="rise d2">
+    <div class="searchRow">
+      <svg class="paw" viewBox="0 0 24 24" fill="var(--moss)"><ellipse cx="7" cy="8" rx="2.4" ry="3.2"/><ellipse cx="12" cy="6.4" rx="2.4" ry="3.4"/><ellipse cx="17" cy="8" rx="2.4" ry="3.2"/><ellipse cx="12" cy="16" rx="5.6" ry="4.6"/></svg>
+      <input id="q" placeholder="Search, or type a URL" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="engines" id="engines"></div>
+  </div>
+
+  <section class="rise d3">
+    <div class="sec-h"><h2>Trays</h2><div class="rule"></div></div>
+    <div class="trayTabs" id="trayTabs"></div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="lower rise d4">
+    <div class="panel">
+      <div class="sec-h"><h2>Local servers</h2><div class="rule"></div><span class="act" id="portToggle"></span></div>
+      <div class="portGrid" id="ports"><div class="empty">Scanning…</div></div>
+    </div>
+    <div class="panel">
+      <div class="sec-h"><h2>Caught</h2><div class="rule"></div></div>
+      <div id="stats"></div>
+    </div>
+    <div class="panel">
+      <div class="sec-h"><h2>Utility belt</h2><div class="rule"></div><a class="act" href="/tools.html">all 13</a></div>
+      <div class="toolGrid" id="tools"></div>
+    </div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const post = (action, payload) => fetch('/api/command', {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({action, payload: payload||{}})
+}).catch(()=>{});
+
+const setText = (el, v) => { if (el && el.textContent !== v) el.textContent = v; };
+const fmtBytes = n => { if(!n) return '0 B'; const u=['B','KB','MB','GB','TB']; let i=0,v=n;
+  while(v>=1024 && i<u.length-1){v/=1024;i++} return v.toFixed(v<10&&i>0?1:0)+' '+u[i]; };
+const fmtDur = s => { s=Math.round(s||0); if(s<60) return s+'s';
+  const m=Math.floor(s/60); if(m<60) return m+'m'; const h=Math.floor(m/60); return h+'h '+(m%60)+'m'; };
+
+/* ---------- clock ---------- */
+function tick(){
+  const n = new Date();
+  let h = n.getHours(); const mer = h>=12?'PM':'AM'; h = h%12 || 12;
+  setText($('#hh'), String(h).padStart(2,'0'));
+  setText($('#mm'), String(n.getMinutes()).padStart(2,'0'));
+  setText($('#mer'), mer);
+  setText($('#date'), n.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'}));
+  $('#secbar').style.width = (n.getSeconds()/59*100).toFixed(2)+'%';
+}
+tick(); setInterval(tick, 1000);
+
+/* ---------- cat ---------- */
+const cat = $('#cat');
+function blink(){
+  cat.classList.add('blink');
+  setTimeout(()=>cat.classList.remove('blink'), 115);
+  setTimeout(blink, 3200 + Math.random()*5200);
+}
+setTimeout(blink, 1800);
+document.addEventListener('mousemove', e => {
+  const dx = (e.clientX/window.innerWidth - .5) * 5.5;
+  const dy = (e.clientY/window.innerHeight - .5) * 4;
+  cat.querySelectorAll('.pupil,.glint').forEach(p=>{
+    p.style.transform = 'translate('+dx.toFixed(2)+'px,'+dy.toFixed(2)+'px)';
+  });
+});
+$('#q').addEventListener('focus', ()=>cat.classList.add('perk'));
+$('#q').addEventListener('blur',  ()=>cat.classList.remove('perk'));
+
+/* ---------- trays ---------- */
+const TRAY_FALLBACK = [
+  {name:'Dev',           sites:[{title:'GitHub',url:'https://github.com'},{title:'MDN',url:'https://developer.mozilla.org'},{title:'Stack Overflow',url:'https://stackoverflow.com'},{title:'Hacker News',url:'https://news.ycombinator.com'}]},
+  {name:'Personal',      sites:[{title:'Gmail',url:'https://mail.google.com'},{title:'Calendar',url:'https://calendar.google.com'},{title:'Drive',url:'https://drive.google.com'},{title:'Notion',url:'https://notion.so'}]},
+  {name:'Entertainment', sites:[{title:'YouTube',url:'https://youtube.com'},{title:'Spotify',url:'https://open.spotify.com'},{title:'Netflix',url:'https://netflix.com'},{title:'Twitch',url:'https://twitch.tv'}]}
+];
+let trays = TRAY_FALLBACK, activeTray = 0, traysKey = '';
+
+function renderTrays(){
+  const tabs = $('#trayTabs');
+  const key = JSON.stringify(trays) + '|' + activeTray;
+  if (tabs.dataset.key === key) return;
+  tabs.dataset.key = key;
+
+  tabs.innerHTML = '';
+  trays.forEach((t,i)=>{
+    const b = document.createElement('button');
+    b.className = 'tt' + (i===activeTray ? ' on' : '');
+    b.textContent = t.name;
+    b.onclick = ()=>{ activeTray=i; renderTrays(); };
+    tabs.appendChild(b);
+  });
+
+  const grid = $('#tiles'); grid.innerHTML = '';
+  const sites = (trays[activeTray] && trays[activeTray].sites) || [];
+  sites.slice(0,8).forEach(s=>{
+    const a = document.createElement('div');
+    a.className = 'tile';
+    a.innerHTML = '<span class="t"></span><span class="u"></span>';
+    a.querySelector('.t').textContent = s.title;
+    a.querySelector('.u').textContent = s.url.replace(/^https?:\/\//,'').replace(/\/$/,'');
+    a.onclick = ()=>post('navigate',{url:s.url});
+    grid.appendChild(a);
+  });
+  for(let i=sites.length;i<8;i++){
+    const e = document.createElement('div');
+    e.className = 'tile empty';
+    e.innerHTML = '<span class="t">+</span><span class="u">empty slot</span>';
+    grid.appendChild(e);
+  }
+}
+
+/* ---------- diffing renderers ---------- */
+let portsExpanded = false, portsKey = '';
+function renderPorts(list){
+  const key = JSON.stringify(list) + '|' + portsExpanded;
+  if (key === portsKey) return;
+  portsKey = key;
+  const host = $('#ports'), toggle = $('#portToggle');
+  host.innerHTML = '';
+  if(!list.length){ host.innerHTML = '<div class="empty">Nothing listening</div>'; toggle.textContent=''; return; }
+  const shown = portsExpanded ? list : list.slice(0,8);
+  shown.forEach(s=>{
+    const d = document.createElement('div');
+    d.className = 'port';
+    d.innerHTML = '<b></b><span></span>';
+    d.querySelector('b').textContent = ':'+s.port;
+    d.querySelector('span').textContent = s.process;
+    d.onclick = ()=>post('navigate',{url:s.url});
+    host.appendChild(d);
+  });
+  toggle.textContent = list.length>8 ? (portsExpanded ? 'show less' : '+'+(list.length-8)+' more') : '';
+  toggle.onclick = ()=>{ portsExpanded=!portsExpanded; renderPorts(list); };
+}
+
+let toolsKey='';
+function renderTools(list){
+  const key = JSON.stringify(list); if(key===toolsKey) return; toolsKey=key;
+  const host = $('#tools'); host.innerHTML='';
+  list.slice(0,6).forEach(t=>{
+    const a=document.createElement('a'); a.className='tool'; a.href=t.url; a.textContent=t.name;
+    host.appendChild(a);
+  });
+}
+
+let statsBuilt=false;
+function renderStats(state){
+  const ab = state.adblock||{}, st = state.stats||{};
+  const host = $('#stats');
+  if(!statsBuilt){
+    host.innerHTML =
+      '<div class="statRow hero-stat"><span class="k">Blocked</span><span class="v" id="s-life">0</span></div>'+
+      '<div class="statRow"><span class="k">This session</span><span class="v" id="s-sess">0</span></div>'+
+      '<div class="statRow"><span class="k">Bandwidth<em>est</em></span><span class="v" id="s-bw">0 B</span></div>'+
+      '<div class="statRow"><span class="k">Time<em>est</em></span><span class="v" id="s-time">0s</span></div>'+
+      '<div class="statRow"><span class="k">Rules armed</span><span class="v" id="s-rules">0</span></div>'+
+      '<div class="since"><span id="s-since"></span></div>';
+    statsBuilt = true;
+  }
+  setText($('#s-life'),  (st.lifetimeBlocked||0).toLocaleString());
+  setText($('#s-sess'),  (ab.blockedCount||0).toLocaleString());
+  setText($('#s-bw'),    fmtBytes(st.lifetimeBytesSaved||0));
+  setText($('#s-time'),  fmtDur(st.estimatedSecondsSaved||0));
+  setText($('#s-rules'), (ab.ruleCount||0).toLocaleString());
+
+  let since = localStorage.getItem('forge.since');
+  if(!since){ since = new Date().toISOString(); try{localStorage.setItem('forge.since',since)}catch(e){} }
+  setText($('#s-since'), 'On watch since ' + new Date(since).toLocaleDateString([], {day:'numeric', month:'short', year:'numeric'}));
+
+  const hunt = Math.min(1, (ab.blockedCount||0)/120);
+  document.documentElement.style.setProperty('--hunt', hunt.toFixed(3));
+}
+
+let enginesKey='';
+function renderEngines(state){
+  const key = JSON.stringify(state.searchEngines)+'|'+state.currentSearchEngine;
+  if(key===enginesKey) return; enginesKey=key;
+  const host=$('#engines'); host.innerHTML='';
+  (state.searchEngines||[]).forEach(e=>{
+    const b=document.createElement('button');
+    b.className='chip'+(e.id===state.currentSearchEngine?' on':'');
+    b.textContent=e.name;
+    b.onclick=()=>post('setSearchEngine',{id:e.id}).then(load);
+    host.appendChild(b);
+  });
+  const t=document.createElement('button');
+  t.className='chip todo'; t.textContent='third engine — pending';
+  host.appendChild(t);
+}
+
+/* ---------- search ---------- */
+const q = $('#q');
+q.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const v=q.value.trim(); if(!v) return;
+  post('navigate',{url:v}); q.value='';
+});
+
+/* ---------- state ---------- */
+async function load(){
+  try{
+    const s = await (await fetch('/api/state',{cache:'no-store'})).json();
+    renderEngines(s);
+    renderPorts(s.devServers||[]);
+    renderTools(s.tools||[]);
+    renderStats(s);
+    if(Array.isArray(s.trays) && s.trays.length){
+      const k=JSON.stringify(s.trays);
+      if(k!==traysKey){ traysKey=k; trays=s.trays; }
+    }
+    renderTrays();
+    setText($('#foot'), 'FORGE · CEF ' + (s.cefVersion||'?'));
+  }catch(e){}
+}
+renderTrays();
+load();
+setInterval(load, 2500);
+q.focus();
+</script>
+</body>
+</html>
