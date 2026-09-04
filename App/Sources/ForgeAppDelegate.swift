@@ -55,6 +55,10 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func addShortcutFromMenu(_ sender: NSMenuItem) {
+        activeController?.addCurrentTabToTray(sender.representedObject as? String)
+    }
+
     @objc private func openURLFromMenu(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? String else { return }
         if let controller = activeController {
@@ -255,6 +259,18 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.removeAllItems()
             menu.addItem(browserItem("Bookmark This Tab", "handleBookmarkTab", "d"))
             menu.addItem(browserItem("Show All Bookmarks", "handleShowBookmarks", "b", [.command, .option]))
+            let shortcutItem = NSMenuItem(title: "Add to Shortcuts", action: nil, keyEquivalent: "")
+            let shortcutMenu = NSMenu(title: "Add to Shortcuts")
+            for tray in Trays.all {
+                let entry = NSMenuItem(title: tray.name,
+                                       action: #selector(addShortcutFromMenu(_:)),
+                                       keyEquivalent: "")
+                entry.target = self
+                entry.representedObject = tray.name
+                shortcutMenu.addItem(entry)
+            }
+            shortcutItem.submenu = shortcutMenu
+            menu.addItem(shortcutItem)
             let saved = BookmarkStore.shared.all
             if !saved.isEmpty {
                 menu.addItem(.separator())
