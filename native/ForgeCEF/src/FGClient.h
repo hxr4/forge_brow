@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "include/cef_client.h"
+#include "include/cef_devtools_message_observer.h"
+#include "include/cef_registration.h"
 #include "include/cef_find_handler.h"
 #include "include/cef_download_handler.h"
 
@@ -25,6 +27,7 @@ class FGClient : public CefClient,
   explicit FGClient(FGBrowserView* owner);
 
   void Detach();
+  void Evaluate(const std::string& expression, void (^completion)(id));
   void SetIgnoreCertificateErrors(bool value);
   bool ignore_certificate_errors() const;
   uint64_t blocked_count() const;
@@ -124,6 +127,9 @@ class FGClient : public CefClient,
   void InjectCosmeticFilters(CefRefPtr<CefFrame> frame);
 
   __weak FGBrowserView* owner_;
+
+  CefRefPtr<CefDevToolsMessageObserver> devtools_observer_;
+  CefRefPtr<CefRegistration> devtools_registration_;
 
   CefRefPtr<CefBrowser> browser_;
   mutable std::mutex browser_lock_;

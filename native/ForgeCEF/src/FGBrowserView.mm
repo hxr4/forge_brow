@@ -247,6 +247,16 @@
                                              browser->GetMainFrame()->GetURL(), 0);
 }
 
+- (void)evaluate:(NSString *)expression completion:(void (^)(id))completion {
+  if (!_client || expression.length == 0) {
+    if (completion) {
+      completion(nil);
+    }
+    return;
+  }
+  _client->Evaluate(std::string(expression.UTF8String), completion);
+}
+
 - (void)closeBrowser {
   CefRefPtr<CefBrowser> browser = [self cefBrowser];
   if (browser) {

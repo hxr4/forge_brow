@@ -64,6 +64,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)printPage;
 - (void)closeBrowser;
 - (void)executeJavaScript:(NSString *)script;
+- (void)evaluate:(NSString *)expression completion:(void (^)(id _Nullable result))completion;
 
 @end
 

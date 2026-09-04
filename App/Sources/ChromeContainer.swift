@@ -13,6 +13,17 @@ final class ChromeContainer: NSView {
     var toolbar: NSView?
     var content: NSView?
     var divider: NSView?
+    var nowPlaying: NSView?
+
+    var nowPlayingVisible = false {
+        didSet {
+            guard nowPlayingVisible != oldValue else { return }
+            nowPlaying?.isHidden = !nowPlayingVisible
+            layoutSubtree(animated: true)
+        }
+    }
+
+    static let nowPlayingHeight: CGFloat = 52
 
     override var isFlipped: Bool { true }
 
@@ -30,6 +41,8 @@ final class ChromeContainer: NSView {
         defer { isLayingOut = false }
 
         let toolbarHeight = Theme.Metrics.toolbarHeight
+        let mediaHeight = nowPlayingVisible ? Self.nowPlayingHeight : 0
+        let usableHeight = max(0, bounds.height - mediaHeight)
         var stripFrame = NSRect.zero
         var toolbarFrame = NSRect.zero
         var dividerFrame = NSRect.zero
@@ -42,17 +55,19 @@ final class ChromeContainer: NSView {
             dividerFrame = NSRect(x: 0, y: stripHeight + toolbarHeight - 1, width: bounds.width, height: 1)
             contentFrame = NSRect(x: 0, y: stripHeight + toolbarHeight,
                                   width: bounds.width,
-                                  height: max(0, bounds.height - stripHeight - toolbarHeight))
+                                  height: max(0, usableHeight - stripHeight - toolbarHeight))
         } else {
             let sidebar = Theme.Metrics.sidebarWidth
             toolbarFrame = NSRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
             dividerFrame = NSRect(x: 0, y: toolbarHeight - 1, width: bounds.width, height: 1)
             stripFrame = NSRect(x: 0, y: toolbarHeight, width: sidebar,
-                                height: max(0, bounds.height - toolbarHeight))
+                                height: max(0, usableHeight - toolbarHeight))
             contentFrame = NSRect(x: sidebar, y: toolbarHeight,
                                   width: max(0, bounds.width - sidebar),
-                                  height: max(0, bounds.height - toolbarHeight))
+                                  height: max(0, usableHeight - toolbarHeight))
         }
+
+        let mediaFrame = NSRect(x: 0, y: usableHeight, width: bounds.width, height: mediaHeight)
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
@@ -62,12 +77,14 @@ final class ChromeContainer: NSView {
                 toolbar.animator().frame = toolbarFrame
                 divider.animator().frame = dividerFrame
                 content.animator().frame = contentFrame
+                nowPlaying?.animator().frame = mediaFrame
             }
         } else {
             tabStrip.frame = stripFrame
             toolbar.frame = toolbarFrame
             divider.frame = dividerFrame
             content.frame = contentFrame
+            nowPlaying?.frame = mediaFrame
         }
     }
 }

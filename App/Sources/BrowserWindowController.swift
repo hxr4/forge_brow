@@ -21,6 +21,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private let bypassPill = NSTextField(labelWithString: "")
     private let blockCounter = NSTextField(labelWithString: "")
 
+    private let nowPlayingBar = NowPlayingBar()
+    private var mediaTabID: UUID?
     private let palette = CommandPaletteController()
     private let findBar = FindBar()
     private let suggestionsView = OmniboxSuggestionsView()
@@ -94,6 +96,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         contentContainer.layer?.backgroundColor = Theme.void.cgColor
 
         chrome.addSubview(contentContainer)
+        chrome.addSubview(nowPlayingBar)
         chrome.addSubview(tabStrip)
         chrome.addSubview(toolbarView)
         chrome.addSubview(dividerView)
@@ -102,6 +105,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         chrome.toolbar = toolbarView
         chrome.content = contentContainer
         chrome.divider = dividerView
+        chrome.nowPlaying = nowPlayingBar
+        nowPlayingBar.isHidden = true
+        buildNowPlaying()
 
         buildToolbar()
         buildFindBar()
@@ -180,6 +186,61 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         contentContainer.addSubview(findBar, positioned: .above, relativeTo: nil)
+    }
+
+    private func buildNowPlaying() {
+        nowPlayingBar.onTogglePlay = { [weak self] in self?.runMediaCommand(MediaProbe.toggle) }
+        nowPlayingBar.onToggleMute = { [weak self] in self?.runMediaCommand(MediaProbe.toggleMute) }
+        nowPlayingBar.onSeekBack = { [weak self] in self?.runMediaCommand(MediaProbe.seek(-10)) }
+        nowPlayingBar.onSeekForward = { [weak self] in self?.runMediaCommand(MediaProbe.seek(10)) }
+        nowPlayingBar.onReveal = { [weak self] in
+            guard let self, let id = self.mediaTabID else { return }
+            self.selectTab(id: id)
+        }
+    }
+
+    private var mediaTab: Tab? {
+        guard let id = mediaTabID else { return nil }
+        return tabs.first { $0.id == id }
+    }
+
+    private func runMediaCommand(_ script: String) {
+        guard let tab = mediaTab else { return }
+        tab.browserView.evaluate(script) { [weak self] _ in
+            self?.pollMedia()
+        }
+    }
+
+    private func pollMedia() {
+        for tab in tabs where tab.url.hasPrefix("http") {
+            tab.browserView.evaluate(MediaProbe.script) { [weak self] result in
+                guard let self else { return }
+                if let payload = result as? [String: Any] {
+                    tab.media = NowPlaying(payload)
+                } else {
+                    tab.media = nil
+                }
+                self.refreshNowPlaying()
+            }
+        }
+        if tabs.allSatisfy({ !$0.url.hasPrefix("http") }) {
+            refreshNowPlaying()
+        }
+    }
+
+    private func refreshNowPlaying() {
+        let playing = tabs.first { $0.media?.playing == true }
+        let anyMedia = playing ?? tabs.first { $0.media != nil }
+
+        guard let tab = anyMedia, let state = tab.media else {
+            mediaTabID = nil
+            chrome.nowPlayingVisible = false
+            return
+        }
+
+        mediaTabID = tab.id
+        nowPlayingBar.apply(state)
+        chrome.nowPlayingVisible = true
     }
 
     private func buildSuggestions() {
@@ -410,6 +471,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
             self?.pushState()
             self?.updateBlockCounter()
+            self?.pollMedia()
         }
         RunLoop.main.add(timer, forMode: .common)
         stateTimer = timer

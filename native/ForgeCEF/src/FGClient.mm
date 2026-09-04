@@ -7,6 +7,7 @@
 #import "FGDownloads.h"
 
 #include "include/cef_image.h"
+#include "include/cef_values.h"
 #include "include/cef_parser.h"
 #include "include/cef_ssl_info.h"
 
@@ -106,6 +107,59 @@ class FGFaviconCallback : public CefDownloadImageCallback {
   IMPLEMENT_REFCOUNTING(FGFaviconCallback);
 };
 
+
+class FGDevToolsObserver : public CefDevToolsMessageObserver {
+ public:
+  FGDevToolsObserver() : pending_([NSMutableDictionary dictionary]) {}
+
+  void Store(int message_id, void (^handler)(id)) {
+    if (!handler) {
+      return;
+    }
+    std::lock_guard<std::mutex> guard(lock_);
+    pending_[@(message_id)] = [handler copy];
+  }
+
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser,
+                              int message_id,
+                              bool success,
+                              const void* result,
+                              size_t result_size) override {
+    void (^handler)(id) = nil;
+    {
+      std::lock_guard<std::mutex> guard(lock_);
+      handler = pending_[@(message_id)];
+      [pending_ removeObjectForKey:@(message_id)];
+    }
+    if (!handler) {
+      return;
+    }
+
+    id value = nil;
+    if (success && result && result_size > 0) {
+      NSData* data = [NSData dataWithBytes:result length:result_size];
+      NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+      if ([parsed isKindOfClass:NSDictionary.class]) {
+        NSDictionary* inner = parsed[@"result"];
+        if ([inner isKindOfClass:NSDictionary.class]) {
+          id candidate = inner[@"value"];
+          if (candidate && candidate != NSNull.null) {
+            value = candidate;
+          }
+        }
+      }
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      handler(value);
+    });
+  }
+
+ private:
+  std::mutex lock_;
+  NSMutableDictionary* pending_;
+  IMPLEMENT_REFCOUNTING(FGDevToolsObserver);
+};
+
 bool IsInternalScheme(const std::string& url) {
   if (url.empty()) {
     return true;
@@ -123,6 +177,34 @@ bool IsInternalScheme(const std::string& url) {
 }  // namespace
 
 FGClient::FGClient(FGBrowserView* owner) : owner_(owner) {}
+
+void FGClient::Evaluate(const std::string& expression, void (^completion)(id)) {
+  CefRefPtr<CefBrowser> target = browser();
+  if (!target || expression.empty()) {
+    if (completion) {
+      dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+    }
+    return;
+  }
+
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString("expression", expression);
+  params->SetBool("returnByValue", true);
+  params->SetBool("awaitPromise", false);
+  params->SetInt("timeout", 900);
+
+  const int assigned =
+      target->GetHost()->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
+  if (assigned <= 0) {
+    if (completion) {
+      dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+    }
+    return;
+  }
+  if (devtools_observer_) {
+    static_cast<FGDevToolsObserver*>(devtools_observer_.get())->Store(assigned, completion);
+  }
+}
 
 void FGClient::Detach() {
   detached_.store(true, std::memory_order_relaxed);
@@ -238,6 +320,11 @@ void FGClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     std::lock_guard<std::mutex> guard(browser_lock_);
     browser_ = browser;
   }
+  if (!devtools_observer_) {
+    devtools_observer_ = new FGDevToolsObserver();
+    devtools_registration_ =
+        browser->GetHost()->AddDevToolsMessageObserver(devtools_observer_);
+  }
   __weak FGBrowserView* owner = owner_;
   dispatch_async(dispatch_get_main_queue(), ^{
     [owner handleBrowserCreated];
@@ -249,6 +336,8 @@ bool FGClient::DoClose(CefRefPtr<CefBrowser> browser) {
 }
 
 void FGClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
+  devtools_registration_ = nullptr;
+  devtools_observer_ = nullptr;
   {
     std::lock_guard<std::mutex> guard(browser_lock_);
     browser_ = nullptr;
