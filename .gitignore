@@ -12,6 +12,7 @@ build/
 third_party/
 filters/*.txt
 filters/*.dat
+filters/*.json
 
 rust/forge-adblock/target/
 rust/forge-adblock/Cargo.lock
