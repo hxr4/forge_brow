@@ -1,0 +1,94 @@
+name: ForgeBrowser
+
+options:
+  bundleIdPrefix: com.forge
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+    SWIFT_VERSION: "5.0"
+    CLANG_ENABLE_OBJC_ARC: YES
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_CXX_LIBRARY: "libc++"
+    ENABLE_HARDENED_RUNTIME: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    VALIDATE_PRODUCT: NO
+    GCC_WARN_ABOUT_RETURN_TYPE: YES
+    CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+
+targets:
+
+  ForgeHelper:
+    type: application
+    platform: macOS
+    productName: Forge Helper
+    sources:
+      - path: helper
+      - path: native/shared
+    settings:
+      base:
+        PRODUCT_NAME: Forge Helper
+        PRODUCT_BUNDLE_IDENTIFIER: com.forge.browser.helper
+        INFOPLIST_FILE: App/Resources/Helper-Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CREATE_INFOPLIST_SECTION_IN_BINARY: NO
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/third_party/cef"
+          - "$(SRCROOT)/native/shared"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/third_party/cef/build/libcef_dll_wrapper"
+        OTHER_LDFLAGS:
+          - "-lcef_dll_wrapper"
+          - "-framework"
+          - "AppKit"
+
+  ForgeBrowser:
+    type: application
+    platform: macOS
+    productName: Forge Browser
+    sources:
+      - path: App/Sources
+      - path: native/ForgeCEF
+      - path: native/shared
+      - path: App/Resources/web
+        type: folder
+        buildPhase: resources
+      - path: App/Resources/AppIcon.icns
+        buildPhase: resources
+      - path: filters
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: ForgeHelper
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: Forge Browser
+        PRODUCT_BUNDLE_IDENTIFIER: com.forge.browser
+        INFOPLIST_FILE: App/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CREATE_INFOPLIST_SECTION_IN_BINARY: NO
+        SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/App/Resources/Forge-Bridging-Header.h"
+        SWIFT_OBJC_INTERFACE_HEADER_NAME: "Forge-Swift.h"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/third_party/cef"
+          - "$(SRCROOT)/native/ForgeCEF/include"
+          - "$(SRCROOT)/native/ForgeCEF/src"
+          - "$(SRCROOT)/native/shared"
+          - "$(SRCROOT)/rust/forge-adblock/include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/third_party/cef/build/libcef_dll_wrapper"
+          - "$(SRCROOT)/rust/forge-adblock/target/aarch64-apple-darwin/release"
+        OTHER_LDFLAGS:
+          - "-lcef_dll_wrapper"
+          - "-lforge_adblock"
+          - "-framework"
+          - "AppKit"
