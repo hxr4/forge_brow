@@ -16,5 +16,44 @@
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>FGApplication</string>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>Forge uses Bluetooth so websites can talk to security keys, passkeys and Web Bluetooth devices.</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>Forge uses Bluetooth so websites can talk to security keys, passkeys and Web Bluetooth devices.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Forge lets websites use the camera for video calls and photo capture, once you allow it.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Forge lets websites use the microphone for calls and voice input, once you allow it.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Forge shares your location with websites that ask for it, once you allow it.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Forge lets websites use speech recognition for voice input, once you allow it.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Forge reaches development servers running on your local network.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Forge reads and writes files here when you upload or download them.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Forge reads and writes files here when you upload or download them.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Forge saves your downloads here.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>Forge reads and writes files on removable volumes when you upload or download them.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Forge uses Apple Events to open links in other applications.</string>
+
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>Web site URL</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>http</string>
+        <string>https</string>
+      </array>
+    </dict>
+  </array>
+  <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 </dict>
 </plist>
