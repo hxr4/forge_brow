@@ -1,0 +1,18 @@
+[package]
+name = "forge-adblock"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "forge_adblock"
+crate-type = ["staticlib"]
+
+[dependencies]
+serde_json = "1"
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
