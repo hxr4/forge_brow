@@ -8,6 +8,7 @@ final class Tab {
     var title: String
     var url: String
     var favicon: NSImage?
+    var media: NowPlaying?
     var isLoading = false
     var canGoBack = false
     var canGoForward = false
