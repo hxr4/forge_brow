@@ -45,8 +45,10 @@ final class TabStripView: NSView {
 
     func update(with tabs: [Tab], selectedIndex: Int) {
         let incoming = tabs.map { $0.id }
+        var structureChanged = order != incoming
 
         for (id, view) in itemsByID where !incoming.contains(id) {
+            structureChanged = true
             Theme.animate(0.16) {
                 view.animator().alphaValue = 0
             }
@@ -61,6 +63,7 @@ final class TabStripView: NSView {
             if let existing = itemsByID[tab.id] {
                 view = existing
             } else {
+                structureChanged = true
                 view = TabItemView(tabID: tab.id)
                 view.alphaValue = 0
                 pendingEntrance.insert(tab.id)
@@ -79,7 +82,7 @@ final class TabStripView: NSView {
         }
 
         order = incoming
-        layoutItems(animated: true)
+        if structureChanged { layoutItems(animated: true) }
     }
 
     override func layout() {
