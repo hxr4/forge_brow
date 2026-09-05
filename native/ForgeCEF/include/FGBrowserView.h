@@ -67,6 +67,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)executeJavaScript:(NSString *)script;
 - (void)evaluate:(NSString *)expression completion:(void (^)(id _Nullable result))completion;
 
+@property (class, nonatomic, copy, nullable) NSString *documentStartScript;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -10,7 +10,8 @@ enum StatsProbe {
     transferred:b+(n.transferSize||0),ttfb:Math.round(n.responseStart||0),\
     dcl:Math.round(n.domContentLoadedEventEnd||0),load:Math.round(n.loadEventEnd||0),\
     heap:m.usedJSHeapSize||0,heapLimit:m.jsHeapSizeLimit||0,\
-    frames:window.frames.length,origin:location.origin};})()
+    frames:window.frames.length,origin:location.origin,\
+    defused:window.__forgeDefused||0};})()
     """
 }
 
