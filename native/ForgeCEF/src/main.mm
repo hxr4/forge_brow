@@ -10,8 +10,13 @@ static NSString* ProfileDirectory() {
   NSArray<NSString*>* paths =
       NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
   NSString* base = paths.firstObject ?: NSTemporaryDirectory();
-  NSString* directory =
-      [[base stringByAppendingPathComponent:@"Forge Browser"] stringByAppendingPathComponent:@"profiles/default"];
+  NSString* name = NSProcessInfo.processInfo.environment[@"FORGE_PROFILE"];
+  if (name.length == 0) {
+    name = @"default";
+  }
+  name = [name stringByReplacingOccurrencesOfString:@"/" withString:@"-"];
+  NSString* directory = [[base stringByAppendingPathComponent:@"Forge Browser"]
+      stringByAppendingPathComponent:[@"profiles" stringByAppendingPathComponent:name]];
   [NSFileManager.defaultManager createDirectoryAtPath:directory
                           withIntermediateDirectories:YES
                                            attributes:nil
