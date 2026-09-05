@@ -91,7 +91,35 @@ final class DevServerMonitor {
             }
         }
 
-        return results.values.sorted { $0.port < $1.port }
+        return results.values.filter(isInteresting).sorted { $0.port < $1.port }
+    }
+
+    private static let devProcesses: Set<String> = [
+        "node", "deno", "bun", "python", "python3", "ruby", "php", "java", "dotnet",
+        "go", "cargo", "rustc", "air", "nginx", "httpd", "caddy", "gunicorn", "uvicorn",
+        "hugo", "jekyll", "esbuild", "vite", "webpack", "next-server", "rails", "puma",
+        "dart", "flutter", "ollama", "docker", "com.docker.backend", "postgres", "mysqld",
+        "mongod", "redis-server", "supabase", "firebase", "wrangler", "serve", "http-server"
+    ]
+
+    private static let noisyProcesses: [String] = [
+        "controlcenter", "rapportd", "sharingd", "airplay", "adobe", "creative cloud",
+        "spotify", "dropbox", "code helper", "antigravity", "whatsapp", "discord",
+        "chrome", "brave", "firefox", "safari", "music", "photos", "steam", "zoom",
+        "onedrive", "teams", "slack", "forge helper", "forge browser"
+    ]
+
+    private static let devPorts: Set<Int> = [
+        1313, 3000, 3001, 3002, 3003, 4000, 4200, 4321, 5173, 5174, 5432, 5500,
+        6379, 7860, 8000, 8001, 8080, 8081, 8100, 8888, 9000, 9090, 11434, 27017
+    ]
+
+    static func isInteresting(_ server: DevServer) -> Bool {
+        let name = server.processName.lowercased()
+        for noise in noisyProcesses where name.contains(noise) { return false }
+        if devProcesses.contains(name) { return true }
+        for candidate in devProcesses where name.hasPrefix(candidate) { return true }
+        return devPorts.contains(server.port)
     }
 
     private static func port(from address: String) -> Int? {
