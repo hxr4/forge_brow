@@ -863,6 +863,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                 }
             ]
 
+            commands.append(PaletteCommand(id: "trays-reset", title: "Reset Shortcuts to Defaults",
+                                           subtitle: "Restore the stock Developer, Personal and Entertainment trays") {
+                Trays.reset()
+            })
             commands.append(PaletteCommand(id: "group-new", title: "New Tab Group with This Tab",
                                            subtitle: "Start a group from the current tab") { [weak self] in
                 self?.handleNewTabGroup()
@@ -973,6 +977,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                 Trays.renameSite(url: url, tray: tray, title: title)
                 pushState(force: true)
             }
+        case "resetTrays":
+            Trays.reset()
+            pushState(force: true)
         case "addTray":
             if let name = payload["name"] as? String {
                 Trays.addTray(name: name)
@@ -1063,6 +1070,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             SearchEngines.current.id,
             orientation.rawValue,
             servers.map { String($0.port) }.joined(separator: ","),
+            String(FGAdblock.shared.blockedCount),
             String(downloads.count),
             String(StatsStore.shared.lifetimeBlocked),
             String(FGAdblock.shared.blockedPopupCount)
@@ -1098,7 +1106,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         store.setValue(downloads, forStateKey: "downloads")
         store.setValue([
             "popupsBlocked": FGAdblock.shared.blockedPopupCount,
-            "lists": FGAdblock.shared.listCount
+            "lists": FGAdblock.shared.listCount,
+            "requestsSeen": FGAdblock.shared.requestsSeen,
+            "sessionBlocked": FGAdblock.shared.blockedCount,
+            "byType": FGAdblock.shared.blockedByType
         ], forStateKey: "shields")
         store.setValue(FGEngine.cefVersion(), forStateKey: "cefVersion")
         store.setValue(stateRevision, forStateKey: "revision")

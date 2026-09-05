@@ -12,6 +12,12 @@ namespace {
 
 std::atomic<uint64_t> gBlockedCount{0};
 std::atomic<uint64_t> gEstimatedBytes{0};
+std::atomic<uint64_t> gRequestsSeen{0};
+std::atomic<uint64_t> gBlockedScripts{0};
+std::atomic<uint64_t> gBlockedBeacons{0};
+std::atomic<uint64_t> gBlockedImages{0};
+std::atomic<uint64_t> gBlockedFrames{0};
+std::atomic<uint64_t> gBlockedOther{0};
 std::atomic<uint64_t> gBlockedPopups{0};
 
 uint64_t EstimatedSizeForType(const char* request_type) {
@@ -164,6 +170,12 @@ uint64_t EstimatedSizeForType(const char* request_type) {
 - (void)resetCounters {
   gBlockedCount.store(0, std::memory_order_relaxed);
   gEstimatedBytes.store(0, std::memory_order_relaxed);
+  gRequestsSeen.store(0, std::memory_order_relaxed);
+  gBlockedScripts.store(0, std::memory_order_relaxed);
+  gBlockedBeacons.store(0, std::memory_order_relaxed);
+  gBlockedImages.store(0, std::memory_order_relaxed);
+  gBlockedFrames.store(0, std::memory_order_relaxed);
+  gBlockedOther.store(0, std::memory_order_relaxed);
 }
 
 - (BOOL)shouldBlockURL:(const char *)url
@@ -179,6 +191,37 @@ uint64_t EstimatedSizeForType(const char* request_type) {
 - (void)noteBlockedRequestOfType:(const char *)requestType {
   gBlockedCount.fetch_add(1, std::memory_order_relaxed);
   gEstimatedBytes.fetch_add(EstimatedSizeForType(requestType), std::memory_order_relaxed);
+
+  const std::string type = requestType ? requestType : "other";
+  if (type == "script") {
+    gBlockedScripts.fetch_add(1, std::memory_order_relaxed);
+  } else if (type == "xmlhttprequest" || type == "ping" || type == "csp" || type == "beacon") {
+    gBlockedBeacons.fetch_add(1, std::memory_order_relaxed);
+  } else if (type == "image") {
+    gBlockedImages.fetch_add(1, std::memory_order_relaxed);
+  } else if (type == "subdocument" || type == "document") {
+    gBlockedFrames.fetch_add(1, std::memory_order_relaxed);
+  } else {
+    gBlockedOther.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+- (void)noteRequestSeen {
+  gRequestsSeen.fetch_add(1, std::memory_order_relaxed);
+}
+
+- (NSUInteger)requestsSeen {
+  return static_cast<NSUInteger>(gRequestsSeen.load(std::memory_order_relaxed));
+}
+
+- (NSDictionary<NSString *, NSNumber *> *)blockedByType {
+  return @{
+    @"scripts": @(gBlockedScripts.load(std::memory_order_relaxed)),
+    @"beacons": @(gBlockedBeacons.load(std::memory_order_relaxed)),
+    @"images": @(gBlockedImages.load(std::memory_order_relaxed)),
+    @"frames": @(gBlockedFrames.load(std::memory_order_relaxed)),
+    @"other": @(gBlockedOther.load(std::memory_order_relaxed))
+  };
 }
 
 @end
