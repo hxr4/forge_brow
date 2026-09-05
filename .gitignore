@@ -24,3 +24,6 @@ config/forge.env
 .env.*
 !config/forge.env.example
 secrets.plist
+
+App/Resources/web/.*.bak
+App/Resources/web/.*.tmp
