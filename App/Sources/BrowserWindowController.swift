@@ -30,6 +30,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private let statsOverlay = StatsOverlayView()
     private var statsVisible = false
     private var statsTimer: Timer?
+    private var audioTimer: Timer?
     private var suggestionDebounce: Timer?
     private var suggestionQuery = ""
     private var findVisible = false
@@ -266,9 +267,15 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshStats() }
             RunLoop.main.add(timer, forMode: .common)
             statsTimer = timer
+
+            let audio = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in self?.refreshAudio() }
+            RunLoop.main.add(audio, forMode: .common)
+            audioTimer = audio
         } else {
             statsTimer?.invalidate()
             statsTimer = nil
+            audioTimer?.invalidate()
+            audioTimer = nil
             Theme.animate(0.14) { self.statsOverlay.animator().alphaValue = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
                 if !self.statsVisible { self.statsOverlay.isHidden = true }
@@ -312,6 +319,64 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         ]
         statsOverlay.apply(entries)
         positionStats()
+    }
+
+    private func refreshAudio() {
+        guard statsVisible, let tab = selectedTab else { return }
+        tab.browserView.evaluate(AudioProbeScript.call) { [weak self] result in
+            guard let self, self.statsVisible else { return }
+            guard let payload = result as? [String: Any], let snapshot = AudioSnapshot(payload) else {
+                self.statsOverlay.applyAudio([], spectrum: [])
+                self.positionStats()
+                return
+            }
+            self.statsOverlay.applyAudio(self.audioRows(snapshot), spectrum: snapshot.spectrum)
+            self.positionStats()
+        }
+    }
+
+    private func audioRows(_ snapshot: AudioSnapshot) -> [(String, String)] {
+        let device = FGAudioDevice.currentOutput()
+        let deviceRate = (device["sampleRate"] as? NSNumber)?.doubleValue ?? 0
+        let bitDepth = (device["bitDepth"] as? NSNumber)?.intValue ?? 0
+        let mixDepth = (device["mixDepth"] as? NSNumber)?.intValue ?? 0
+        let sampleFormat = device["sampleFormat"] as? String ?? ""
+        let deviceChannels = (device["channels"] as? NSNumber)?.intValue ?? 0
+        let name = device["name"] as? String ?? "Unknown"
+        let transport = device["transport"] as? String ?? "—"
+
+        func khz(_ value: Double) -> String {
+            guard value > 0 else { return "—" }
+            let k = value / 1000
+            return (k == k.rounded() ? String(format: "%.0f", k) : String(format: "%.1f", k)) + " kHz"
+        }
+
+        var rows: [(String, String)] = [
+            ("source", snapshot.host),
+            ("codec", snapshot.codecLabel),
+            ("bitrate", snapshot.kbps > 0 ? "\(snapshot.kbps) kbps" : "measuring…"),
+            ("codec rate", snapshot.nativeRate.map(khz) ?? "unknown"),
+            ("mix rate", khz(snapshot.contextRate)),
+            ("channels", snapshot.channels > 0 ? String(snapshot.channels) : "—"),
+            ("output", name),
+            ("device rate", khz(deviceRate)),
+            ("bit depth", bitDepth > 0
+                ? "\(bitDepth)-bit " + (sampleFormat.isEmpty ? "" : sampleFormat)
+                : (mixDepth > 0 ? "\(mixDepth)-bit mix" : "—")),
+            ("transport", transport + (deviceChannels > 0 ? " · \(deviceChannels)ch" : ""))
+        ]
+
+        if let native = snapshot.nativeRate, deviceRate > 0 {
+            if abs(native - deviceRate) < 1 {
+                rows.append(("resampling", "none · " + khz(deviceRate)))
+            } else {
+                rows.append(("resampling", khz(native) + " → " + khz(deviceRate)))
+            }
+        } else {
+            rows.append(("resampling", "unknown"))
+        }
+
+        return rows
     }
 
     private func positionStats() {

@@ -7,7 +7,8 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        FGBrowserView.documentStartScript = ContentDefuse.isEnabled ? ContentDefuse.script : nil
+        FGBrowserView.documentStartScript =
+            (ContentDefuse.isEnabled ? ContentDefuse.script : "") + AudioProbeScript.script
         buildMainMenu()
         openNewWindow()
         NSApp.activate(ignoringOtherApps: true)
