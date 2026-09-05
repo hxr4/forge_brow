@@ -28,6 +28,7 @@ class FGClient : public CefClient,
 
   void Detach();
   void Evaluate(const std::string& expression, void (^completion)(id));
+  void AddDocumentStartScript(const std::string& source);
   void SetIgnoreCertificateErrors(bool value);
   bool ignore_certificate_errors() const;
   uint64_t blocked_count() const;

@@ -206,6 +206,17 @@ void FGClient::Evaluate(const std::string& expression, void (^completion)(id)) {
   }
 }
 
+void FGClient::AddDocumentStartScript(const std::string& source) {
+  CefRefPtr<CefBrowser> target = browser();
+  if (!target || source.empty()) {
+    return;
+  }
+  target->GetHost()->ExecuteDevToolsMethod(0, "Page.enable", nullptr);
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString("source", source);
+  target->GetHost()->ExecuteDevToolsMethod(0, "Page.addScriptToEvaluateOnNewDocument", params);
+}
+
 void FGClient::Detach() {
   detached_.store(true, std::memory_order_relaxed);
   owner_ = nil;
@@ -311,6 +322,12 @@ void FGClient::InjectCosmeticFilters(CefRefPtr<CefFrame> frame) {
 void FGClient::OnLoadStart(CefRefPtr<CefBrowser> browser,
                            CefRefPtr<CefFrame> frame,
                            TransitionType transition_type) {
+  if (frame && frame->IsMain()) {
+    NSString* startup = FGBrowserView.documentStartScript;
+    if (startup.length > 0) {
+      frame->ExecuteJavaScript(CefString(startup.UTF8String), frame->GetURL(), 0);
+    }
+  }
   InjectCosmeticFilters(frame);
 }
 
@@ -330,6 +347,11 @@ void FGClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     devtools_registration_ =
         browser->GetHost()->AddDevToolsMessageObserver(devtools_observer_);
   }
+  NSString* startup = FGBrowserView.documentStartScript;
+  if (startup.length > 0) {
+    AddDocumentStartScript(std::string(startup.UTF8String));
+  }
+
   __weak FGBrowserView* owner = owner_;
   dispatch_async(dispatch_get_main_queue(), ^{
     [owner handleBrowserCreated];

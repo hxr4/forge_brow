@@ -26,6 +26,16 @@
   BOOL _canGoForward;
 }
 
+static NSString* gDocumentStartScript = nil;
+
++ (NSString *)documentStartScript {
+  return gDocumentStartScript;
+}
+
++ (void)setDocumentStartScript:(NSString *)documentStartScript {
+  gDocumentStartScript = [documentStartScript copy];
+}
+
 - (instancetype)initWithFrame:(NSRect)frame initialURL:(NSString *)url {
   self = [super initWithFrame:frame];
   if (self) {
