@@ -2,5 +2,6 @@
 #import "FGEngine.h"
 #import "FGBrowserView.h"
 #import "FGAdblock.h"
+#import "FGAudioDevice.h"
 #import "FGStateStore.h"
 #import "FGDownloads.h"

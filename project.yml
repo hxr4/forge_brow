@@ -92,3 +92,5 @@ targets:
           - "-lforge_adblock"
           - "-framework"
           - "AppKit"
+          - "-framework"
+          - "CoreAudio"
