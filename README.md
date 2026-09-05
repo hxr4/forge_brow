@@ -52,12 +52,33 @@ Honest accounting, because a blocked-request counter on its own is misleading.
 | Network filtering (requests cancelled) | **Working.** 205k+ rules from 8 lists. |
 | Popup blocking | **Working.** Non-gesture popups blocked; `target=_blank` becomes a tab. |
 | Cosmetic filtering, domain-specific | **Working.** Element-hiding CSS injected per page. |
-| Scriptlet injection | **Wired, not effective.** Only 17 resources parse from Brave's library, so scriptlet rules do not fire. |
-| Generic cosmetic rules (class/id) | **Not implemented.** Needs renderer-side class/id collection over a message router. |
+| YouTube video ads | **Working.** First-party module, see below. |
+| Generic scriptlet rules (`##+js(...)`) | **Not implemented.** See below. |
+| Generic cosmetic rules (class/id) | **Not implemented.** Needs renderer-side class/id collection. |
 
-Consequence: banner ads, trackers and popups are blocked. **YouTube in-stream video ads are
-not**, and some sponsored feed cards survive — those need the scriptlet and generic-cosmetic
-paths above. Don't treat Forge as a privacy tool until those land.
+### YouTube
+
+In-stream ads cannot be blocked at the network layer: they come from the same
+googlevideo.com hosts as the video, described in the same player response. uBlock Origin
+strips them with scriptlets that prune the ad slots before the player reads them.
+
+Forge cannot run those scriptlets. adblock-rust's resource assembler parses only uBlock's
+*old* scriptlet format — its own documentation says the current format is an ES module and
+recommends converting it in JS — and the resource file Brave publishes at the obvious URL
+holds 17 Brave-specific scripts, not the scriptlet library. That is why earlier builds
+reported zero bytes of scriptlet on every page.
+
+So Forge ships its own module instead, injected at document start over the DevTools
+protocol. It arms only on YouTube, wraps `JSON.parse` and `Response.prototype.json`, and
+defines a setter for `ytInitialPlayerResponse`, deleting `adPlacements`, `playerAds`,
+`adSlots` and siblings before the player sees them. A sweep skips and dismisses anything
+that starts anyway. Every deletion is counted and shown in stats for nerds.
+
+Verified against a signed-out profile — no Premium — on heavily monetised videos: content
+starts immediately with no pre-roll.
+
+This is one site handled deliberately, not a scriptlet engine. Filter-list `##+js()` rules
+still do not run.
 
 Lists: EasyList, EasyPrivacy, uBlock Origin (filters, privacy, quick-fixes, badware,
 annoyances-cookies), Fanboy annoyances.
@@ -121,6 +142,14 @@ page state from Swift.
 - **Stats for nerds** — ⌥⌘S, or View › Developer. Per-page DOM, request, transfer and timing
   figures alongside blocked counts, filter rule count, helper process count and browser
   memory.
+- **Audio path** — when something is playing, the same panel shows the whole signal chain:
+  codec and container read from the MediaSource buffer, bitrate measured from appended
+  bytes, channel count, the browser's mix rate, then your actual output device, its sample
+  rate, physical bit depth and transport, and whether the system is resampling between the
+  codec's rate and the device's. With a live spectrum. Works on any site that streams over
+  MSE.
+- **Profiles** — `FORGE_PROFILE=name` runs an independent session, so a signed-out or
+  throwaway instance is one environment variable away.
 - **Shortcuts** — editable trays, from the Bookmarks menu, the palette, or the page API.
 - **Default browser** — Forge declares `http`/`https` and opens URLs handed to it by other
   applications.
