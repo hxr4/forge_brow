@@ -56,23 +56,32 @@ enum Trays {
     private(set) static var revision = 0
 
     static let defaults: [Tray] = [
-        Tray(name: "Dev", sites: [
+        Tray(name: "Developer", sites: [
             Site(title: "GitHub", url: "https://github.com"),
-            Site(title: "MDN", url: "https://developer.mozilla.org"),
+            Site(title: "VS Code", url: "https://vscode.dev"),
             Site(title: "Stack Overflow", url: "https://stackoverflow.com"),
-            Site(title: "Hacker News", url: "https://news.ycombinator.com")
+            Site(title: "MDN", url: "https://developer.mozilla.org"),
+            Site(title: "Figma", url: "https://figma.com"),
+            Site(title: "Docker Hub", url: "https://hub.docker.com"),
+            Site(title: "Postman", url: "https://web.postman.co")
         ]),
         Tray(name: "Personal", sites: [
             Site(title: "Gmail", url: "https://mail.google.com"),
             Site(title: "Calendar", url: "https://calendar.google.com"),
+            Site(title: "Notion", url: "https://notion.so"),
             Site(title: "Drive", url: "https://drive.google.com"),
-            Site(title: "Notion", url: "https://notion.so")
+            Site(title: "WhatsApp", url: "https://web.whatsapp.com"),
+            Site(title: "Spotify", url: "https://open.spotify.com"),
+            Site(title: "Photos", url: "https://photos.google.com")
         ]),
         Tray(name: "Entertainment", sites: [
             Site(title: "YouTube", url: "https://youtube.com"),
-            Site(title: "Spotify", url: "https://open.spotify.com"),
             Site(title: "Netflix", url: "https://netflix.com"),
-            Site(title: "Twitch", url: "https://twitch.tv")
+            Site(title: "Prime Video", url: "https://primevideo.com"),
+            Site(title: "Discord", url: "https://discord.com/app"),
+            Site(title: "Reddit", url: "https://reddit.com"),
+            Site(title: "Steam", url: "https://store.steampowered.com"),
+            Site(title: "Apple Music", url: "https://music.apple.com")
         ])
     ]
 
@@ -207,6 +216,10 @@ extension Trays {
             trays[index].name = trimmed
             return true
         }
+    }
+
+    static func reset() {
+        all = defaults
     }
 
     static func contains(url: String) -> Bool {

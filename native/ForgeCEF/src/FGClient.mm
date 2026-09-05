@@ -487,6 +487,7 @@ cef_return_value_t FGClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser,
 
   const char* request_type = AdblockTypeForResourceType(resource_type);
   FGAdblock* blocker = FGAdblock.shared;
+  [blocker noteRequestSeen];
   if (![blocker shouldBlockURL:url.c_str()
                      sourceURL:source_url.c_str()
                    requestType:request_type]) {

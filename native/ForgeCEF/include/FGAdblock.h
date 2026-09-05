@@ -13,9 +13,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSUInteger listCount;
 @property (nonatomic, readonly) NSUInteger resourceCount;
 @property (nonatomic, readonly) NSUInteger estimatedBytesSaved;
+@property (nonatomic, readonly) NSUInteger requestsSeen;
+@property (nonatomic, readonly) NSDictionary<NSString *, NSNumber *> *blockedByType;
 @property (nonatomic, readonly, nullable) NSString *lastError;
 
 - (BOOL)loadFilterListsAtPaths:(NSArray<NSString *> *)paths;
+- (void)noteRequestSeen;
 - (void)resetCounters;
 
 @end

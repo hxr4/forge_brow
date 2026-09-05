@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
           requestType:(const char *)requestType;
 
 - (void)noteBlockedRequestOfType:(const char *)requestType;
+- (void)noteRequestSeen;
 
 - (nullable NSString *)cosmeticJSONForURL:(const char *)url;
 
