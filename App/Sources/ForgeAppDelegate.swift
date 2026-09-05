@@ -18,6 +18,16 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         false
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        if let minimised = windowControllers.first(where: { $0.window?.isMiniaturized == true }) {
+            minimised.window?.deminiaturize(nil)
+        } else if !windowControllers.contains(where: { $0.window?.isVisible == true }) {
+            openNewWindow()
+        }
+        return true
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         let addresses = urls.map { $0.absoluteString }.filter { !$0.isEmpty }
         guard !addresses.isEmpty else { return }
