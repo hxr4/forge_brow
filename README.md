@@ -22,6 +22,67 @@ close again. Forge makes it the chrome:
   is scoped to one tab and paints it orange until you turn it off.
 - **One command palette over everything** — tabs, tools, ports, history, settings.
 
+## Change history
+
+### 1.2.0
+
+**Tabs**
+- Site favicons on tabs, cached per host on disk.
+- Named, coloured, collapsible tab groups that keep their members contiguous.
+- The tab strip scrolls once tabs overflow, with the new-tab button pinned outside the
+  scrolling area and an overflow menu listing every tab. Past roughly twenty tabs the
+  button used to be overlapped and unreachable.
+- Right-click a tab for duplicate, duplicate in a private window, mute, group, close,
+  close others, and close to the left or right.
+- The strip no longer re-animates on every title change.
+
+**Windows**
+- Private windows on a separate in-memory request context, with their own landing page,
+  no history recording, and a persistent PRIVATE marker in the toolbar.
+- Sidebar: a persistent icon rail plus a slide-out panel. Its first section is a live tab
+  manager with groups, filtering and inline close and mute; the rest are tools,
+  bookmarks, history and downloads.
+- `FORGE_PROFILE=name` runs an independent session.
+- Clicking the dock icon with no windows open reopens one.
+
+**Blocking**
+- YouTube video ads are defused at document start by a first-party module. Generic
+  `##+js()` scriptlet rules still do not run; see the section above for why.
+- Popup blocking, and domain-specific cosmetic filtering.
+- Blocked requests are counted by real resource type instead of invented categories.
+
+**Stats for nerds**
+- Scrolls, so it can hold everything rather than being clipped.
+- Audio path: codec and container from the MediaSource buffer, bitrate measured from
+  appended bytes, channel count, browser mix rate, the actual output device with its
+  sample rate, physical bit depth and transport, and whether the system is resampling.
+  With a live spectrum.
+- Video pipeline: codec, resolution, framerate, measured bitrate, bit depth, dropped
+  frames, and the decoder name and hardware or software decode path read from the
+  DevTools Media domain.
+
+**Elsewhere**
+- Omnibox suggestions: history and bookmarks merged with live completions from the active
+  engine, debounced and switchable off.
+- Now playing bar with artwork, progress, transport controls and click-to-jump.
+- New tab page rebuilt; shortcut trays are editable in place.
+- Dev servers are filtered to plausible ones, with a toggle to show every listening port,
+  and tabs pointed at a server reload themselves when it restarts.
+- Forge registers as an http/https handler and opens URLs passed from other applications.
+
+### 1.1.0
+
+- Declared privacy usage descriptions. Without them macOS aborted the process the moment a
+  sign-in page offered a passkey, because that reaches for CoreBluetooth.
+- Stopped rebuilding the entire page state on a 1.5 second timer, which was allocating
+  roughly two hundred ICU date formatters per second on the main thread.
+
+### 1.0.0
+
+- First working build: CEF rendering, native AppKit shell, adblock-rust network filtering,
+  command palette, dev server dashboard, per-tab bypass toggles with persistent
+  indicators, and the developer utility belt.
+
 ## Requirements
 
 - Apple Silicon Mac, macOS 13+
