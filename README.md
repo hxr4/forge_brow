@@ -50,6 +50,10 @@ close again. Forge makes it the chrome:
   `##+js()` scriptlet rules still do not run; see the section above for why.
 - Popup blocking, and domain-specific cosmetic filtering.
 - Blocked requests are counted by real resource type instead of invented categories.
+- Request inspector: the sidebar's Network section lists every host the active tab has
+  talked to with its request and blocked counts, filterable, with a per-host block toggle
+  that persists across launches and applies ahead of the filter engine. A host you have
+  blocked keeps a lit marker whether or not the row is hovered.
 
 **Stats for nerds**
 - Scrolls, so it can hold everything rather than being clipped.
