@@ -40,9 +40,14 @@ make_helper " (Plugin)"   ".plugin"
 make_helper " (Renderer)" ".renderer"
 make_helper " (Alerts)"   ".alerts"
 
-echo "assemble: signing app"
-codesign --force --sign - --timestamp=none \
+SIGN_IDENTITY="-"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Forge Local Signing"; then
+  SIGN_IDENTITY="Forge Local Signing"
+fi
+
+echo "assemble: signing app as ${SIGN_IDENTITY}"
+codesign --force --sign "$SIGN_IDENTITY" --timestamp=none \
   "$FRAMEWORKS/Chromium Embedded Framework.framework" 2>/dev/null || true
-codesign --force --sign - --timestamp=none "$APP" 2>/dev/null || true
+codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP" 2>/dev/null || true
 
 echo "assemble: done"

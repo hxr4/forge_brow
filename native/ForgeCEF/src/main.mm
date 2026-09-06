@@ -45,10 +45,6 @@ int main(int argc, char* argv[]) {
     configuration.webResourcePath =
         [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"web"];
 
-    if (![FGEngine startWithConfiguration:configuration argc:argc argv:argv]) {
-      return 1;
-    }
-
     Class delegateClass = NSClassFromString(@"ForgeAppDelegate");
     if (!delegateClass) {
       NSLog(@"[forge] ForgeAppDelegate not found");
@@ -56,6 +52,16 @@ int main(int argc, char* argv[]) {
     }
     gAppDelegate = [[delegateClass alloc] init];
     NSApp.delegate = gAppDelegate;
+
+    if (![FGEngine startWithConfiguration:configuration argc:argc argv:argv]) {
+      return 1;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if ([gAppDelegate respondsToSelector:@selector(ensureWindow)]) {
+        [gAppDelegate performSelector:@selector(ensureWindow)];
+      }
+    });
 
     [FGEngine runMessageLoop];
     [FGEngine shutdown];
