@@ -13,6 +13,24 @@ namespace {
 std::atomic<uint64_t> gBlockedCount{0};
 std::atomic<uint64_t> gEstimatedBytes{0};
 std::atomic<uint64_t> gRequestsSeen{0};
+NSMutableSet<NSString *>* gBlockedHosts = nil;
+std::mutex gBlockedHostsLock;
+
+NSString* HostFromURL(const char* url) {
+  if (!url) {
+    return nil;
+  }
+  NSString* text = [NSString stringWithUTF8String:url];
+  if (text.length == 0) {
+    return nil;
+  }
+  NSURLComponents* parts = [NSURLComponents componentsWithString:text];
+  NSString* host = parts.host.lowercaseString;
+  if (host.length == 0) {
+    return nil;
+  }
+  return [host hasPrefix:@"www."] ? [host substringFromIndex:4] : host;
+}
 std::atomic<uint64_t> gBlockedScripts{0};
 std::atomic<uint64_t> gBlockedBeacons{0};
 std::atomic<uint64_t> gBlockedImages{0};
@@ -204,6 +222,36 @@ uint64_t EstimatedSizeForType(const char* request_type) {
   } else {
     gBlockedOther.fetch_add(1, std::memory_order_relaxed);
   }
+}
+
+- (void)setBlockedHosts:(NSArray<NSString *> *)hosts {
+  std::lock_guard<std::mutex> guard(gBlockedHostsLock);
+  gBlockedHosts = [NSMutableSet setWithArray:hosts ?: @[]];
+}
+
+- (NSArray<NSString *> *)blockedHosts {
+  std::lock_guard<std::mutex> guard(gBlockedHostsLock);
+  return gBlockedHosts.allObjects ?: @[];
+}
+
+- (BOOL)isURLHostBlocked:(const char *)url {
+  NSString* host = HostFromURL(url);
+  if (host.length == 0) {
+    return NO;
+  }
+  std::lock_guard<std::mutex> guard(gBlockedHostsLock);
+  if (gBlockedHosts.count == 0) {
+    return NO;
+  }
+  if ([gBlockedHosts containsObject:host]) {
+    return YES;
+  }
+  for (NSString* blocked in gBlockedHosts) {
+    if ([host hasSuffix:[@"." stringByAppendingString:blocked]]) {
+      return YES;
+    }
+  }
+  return NO;
 }
 
 - (void)noteRequestSeen {

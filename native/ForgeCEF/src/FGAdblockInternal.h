@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)noteBlockedRequestOfType:(const char *)requestType;
 - (void)noteRequestSeen;
+- (BOOL)isURLHostBlocked:(const char *)url;
 
 - (nullable NSString *)cosmeticJSONForURL:(const char *)url;
 

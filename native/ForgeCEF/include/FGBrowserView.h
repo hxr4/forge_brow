@@ -38,6 +38,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSUInteger blockedCountForTab;
 @property (nonatomic, readonly) NSUInteger cosmeticSelectorCount;
 @property (nonatomic, readonly) NSDictionary<NSString *, id> *mediaProperties;
+@property (nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *recentRequests;
 
 @property (nonatomic, assign) FGBypassOptions bypassOptions;
 

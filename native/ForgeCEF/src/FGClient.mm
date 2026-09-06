@@ -257,6 +257,49 @@ void FGClient::AddDocumentStartScript(const std::string& source) {
   target->GetHost()->ExecuteDevToolsMethod(0, "Page.addScriptToEvaluateOnNewDocument", params);
 }
 
+void FGClient::NoteRequest(const std::string& url, const char* type, bool blocked) {
+  NSString* text = [NSString stringWithUTF8String:url.c_str()];
+  NSString* host = [NSURLComponents componentsWithString:text ?: @""].host.lowercaseString;
+  if (host.length == 0) {
+    return;
+  }
+  if ([host hasPrefix:@"www."]) {
+    host = [host substringFromIndex:4];
+  }
+
+  std::lock_guard<std::mutex> guard(requests_lock_);
+  if (hosts_.size() > 500 && hosts_.find(host.UTF8String) == hosts_.end()) {
+    return;
+  }
+  HostStats& stats = hosts_[host.UTF8String];
+  stats.seen += 1;
+  if (blocked) {
+    stats.blocked += 1;
+  }
+}
+
+void FGClient::ResetRequestStats() {
+  std::lock_guard<std::mutex> guard(requests_lock_);
+  hosts_.clear();
+}
+
+NSArray<NSDictionary<NSString *, id> *>* FGClient::CopyRequests() const {
+  std::map<std::string, HostStats> copy;
+  {
+    std::lock_guard<std::mutex> guard(requests_lock_);
+    copy = hosts_;
+  }
+  NSMutableArray* result = [NSMutableArray arrayWithCapacity:copy.size()];
+  for (const auto& entry : copy) {
+    [result addObject:@{
+      @"host": [NSString stringWithUTF8String:entry.first.c_str()] ?: @"",
+      @"seen": @(entry.second.seen),
+      @"blocked": @(entry.second.blocked)
+    }];
+  }
+  return result;
+}
+
 void FGClient::Detach() {
   detached_.store(true, std::memory_order_relaxed);
   owner_ = nil;
@@ -453,7 +496,11 @@ void FGClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
   }
   {
     std::lock_guard<std::mutex> guard(page_url_lock_);
-    page_url_ = url.ToString();
+    const std::string next = url.ToString();
+    if (!page_url_.empty() && next.rfind(page_url_.substr(0, page_url_.find('?')), 0) != 0) {
+      ResetRequestStats();
+    }
+    page_url_ = next;
   }
   NSString* value = ToNSString(url);
   __weak FGBrowserView* owner = owner_;
@@ -529,9 +576,16 @@ cef_return_value_t FGClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser,
   const char* request_type = AdblockTypeForResourceType(resource_type);
   FGAdblock* blocker = FGAdblock.shared;
   [blocker noteRequestSeen];
-  if (![blocker shouldBlockURL:url.c_str()
-                     sourceURL:source_url.c_str()
-                   requestType:request_type]) {
+
+  bool blocked = [blocker isURLHostBlocked:url.c_str()];
+  if (!blocked) {
+    blocked = [blocker shouldBlockURL:url.c_str()
+                            sourceURL:source_url.c_str()
+                          requestType:request_type];
+  }
+
+  NoteRequest(url, request_type, blocked);
+  if (!blocked) {
     return RV_CONTINUE;
   }
 

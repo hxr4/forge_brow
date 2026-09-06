@@ -20,6 +20,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)loadFilterListsAtPaths:(NSArray<NSString *> *)paths;
 - (void)noteRequestSeen;
 - (void)resetCounters;
+- (void)setBlockedHosts:(NSArray<NSString *> *)hosts;
+@property (nonatomic, readonly) NSArray<NSString *> *blockedHosts;
 
 @end
 

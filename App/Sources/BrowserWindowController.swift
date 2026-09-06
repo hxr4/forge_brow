@@ -235,6 +235,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         sidebar.onSelectTab = { [weak self] id in self?.selectTab(id: id) }
         sidebar.onCloseTab = { [weak self] id in self?.closeTab(id: id) }
         sidebar.onMuteTab = { [weak self] id in self?.toggleMute(id) }
+        sidebar.onToggleBlock = { [weak self] host in
+            CustomRules.toggle(host)
+            self?.refreshChrome()
+        }
         sidebar.onHome = { [weak self] in self?.handleHome() }
         sidebar.onSettings = { [weak self] in self?.handleShowSettings() }
         sidebar.onNewTab = { [weak self] in self?.handleNewTab() }
@@ -270,6 +274,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         guard let tab = mediaTab else { return }
         tab.browserView.evaluate(script) { [weak self] _ in
             self?.pollMedia()
+            self?.sidebar.update(tabs: self?.tabs ?? [], groups: self?.groups ?? [],
+                                 selectedIndex: self?.selectedIndex ?? 0)
         }
     }
 
@@ -686,7 +692,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         x += 6
 
         let rightWidth: CGFloat = 30 + 6 + 46 + pad
-        let counterWidth: CGFloat = 78
+        let counterWidth: CGFloat = 112
         let pillWidth: CGFloat = bypassPill.isHidden ? 0 : 150
         let privateWidth: CGFloat = privatePill.isHidden ? 0 : 74
         let fieldWidth = max(140, toolbarView.bounds.width - x - rightWidth - counterWidth - pillWidth - privateWidth - 16)
@@ -726,6 +732,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             self?.pushState()
             self?.updateBlockCounter()
             self?.pollMedia()
+            self?.sidebar.update(tabs: self?.tabs ?? [], groups: self?.groups ?? [],
+                                 selectedIndex: self?.selectedIndex ?? 0)
         }
         RunLoop.main.add(timer, forMode: .common)
         stateTimer = timer
@@ -1048,7 +1056,11 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     private func updateBlockCounter() {
-        let value = "\(FGAdblock.shared.blockedCount) blocked"
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        let count = formatter.string(from: NSNumber(value: FGAdblock.shared.blockedCount))
+            ?? String(FGAdblock.shared.blockedCount)
+        let value = count + " blocked"
         if blockCounter.stringValue != value { blockCounter.stringValue = value }
     }
 
