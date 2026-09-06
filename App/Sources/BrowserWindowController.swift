@@ -2,6 +2,7 @@ import AppKit
 
 final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, NSTextFieldDelegate {
 
+    private(set) var isPrivate = false
     private var tabs: [Tab] = []
     private var groups: [TabGroup] = []
     private var selectedIndex: Int = 0
@@ -20,8 +21,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private let layoutButton = NSButton()
     private let paletteButton = NSButton()
     private let bypassPill = NSTextField(labelWithString: "")
+    private let privatePill = NSTextField(labelWithString: "")
     private let blockCounter = NSTextField(labelWithString: "")
 
+    private let sidebar = SidebarView()
     private let nowPlayingBar = NowPlayingBar()
     private var mediaTabID: UUID?
     private let palette = CommandPaletteController()
@@ -31,6 +34,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private var statsVisible = false
     private var statsTimer: Timer?
     private var audioTimer: Timer?
+    private var pageRows: [(String, String)] = []
+    private var audioRows: [(String, String)] = []
+    private var videoRows: [(String, String)] = []
+    private var spectrumValues: [Double] = []
     private var suggestionDebounce: Timer?
     private var suggestionQuery = ""
     private var findVisible = false
@@ -56,7 +63,13 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         return tabs[selectedIndex]
     }
 
+    var homeURL: String { isPrivate ? "forge://home/private.html" : "forge://home/" }
+
     convenience init() {
+        self.init(isPrivate: false)
+    }
+
+    convenience init(isPrivate: Bool) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1360, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -71,16 +84,21 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         window.center()
         window.setFrameAutosaveName("ForgeMainWindow")
         self.init(window: window)
+        self.isPrivate = isPrivate
+        window.title = isPrivate ? "Forge Private" : "Forge"
         buildInterface()
         configurePalette()
         startMonitors()
-        newTab(url: "forge://home/")
+        newTab(url: homeURL)
     }
 
     private func buildInterface() {
         guard let root = window?.contentView else { return }
         root.wantsLayer = true
         root.layer?.backgroundColor = Theme.void.cgColor
+        if isPrivate {
+            addressBox.accentOverride = Theme.privateAccent
+        }
 
         chrome.autoresizingMask = [.width, .height]
         chrome.frame = root.bounds
@@ -90,6 +108,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tabStrip.onClose = { [weak self] id in self?.closeTab(id: id) }
         tabStrip.onNewTab = { [weak self] in self?.handleNewTab() }
         tabStrip.onToggleGroup = { [weak self] id in self?.toggleGroupCollapsed(id) }
+        tabStrip.menuProvider = { [weak self] id in self?.tabContextMenu(for: id) }
+        tabStrip.overflowMenuProvider = { [weak self] in self?.tabOverflowMenu() }
 
         toolbarView.wantsLayer = true
         toolbarView.layer?.backgroundColor = Theme.ink.cgColor
@@ -102,6 +122,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         contentContainer.layer?.backgroundColor = Theme.void.cgColor
 
         chrome.addSubview(contentContainer)
+        chrome.addSubview(sidebar)
         chrome.addSubview(nowPlayingBar)
         chrome.addSubview(tabStrip)
         chrome.addSubview(toolbarView)
@@ -111,7 +132,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         chrome.toolbar = toolbarView
         chrome.content = contentContainer
         chrome.divider = dividerView
+        chrome.sidebar = sidebar
         chrome.nowPlaying = nowPlayingBar
+        buildSidebar()
         nowPlayingBar.isHidden = true
         buildNowPlaying()
 
@@ -161,10 +184,23 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         bypassPill.layer?.shadowOffset = .zero
         bypassPill.isHidden = true
 
+        privatePill.stringValue = "PRIVATE"
+        privatePill.font = .systemFont(ofSize: 10, weight: .heavy)
+        privatePill.textColor = Theme.void
+        privatePill.alignment = .center
+        privatePill.wantsLayer = true
+        privatePill.layer?.backgroundColor = Theme.privateAccent.cgColor
+        privatePill.layer?.cornerRadius = 5
+        privatePill.layer?.shadowColor = Theme.privateAccent.cgColor
+        privatePill.layer?.shadowOpacity = 0.45
+        privatePill.layer?.shadowRadius = 10
+        privatePill.layer?.shadowOffset = .zero
+        privatePill.isHidden = !isPrivate
+
         blockCounter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         blockCounter.textColor = Theme.moss
 
-        for view in [backButton, forwardButton, reloadButton, addressBox, bypassPill, blockCounter, layoutButton, paletteButton] {
+        for view in [backButton, forwardButton, reloadButton, addressBox, privatePill, bypassPill, blockCounter, layoutButton, paletteButton] {
             toolbarView.addSubview(view)
         }
         layoutToolbar()
@@ -192,6 +228,26 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         }
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         contentContainer.addSubview(findBar, positioned: .above, relativeTo: nil)
+    }
+
+    private func buildSidebar() {
+        sidebar.onNavigate = { [weak self] url in self?.navigate(to: url) }
+        sidebar.onSelectTab = { [weak self] id in self?.selectTab(id: id) }
+        sidebar.onCloseTab = { [weak self] id in self?.closeTab(id: id) }
+        sidebar.onMuteTab = { [weak self] id in self?.toggleMute(id) }
+        sidebar.onHome = { [weak self] in self?.handleHome() }
+        sidebar.onSettings = { [weak self] in self?.handleShowSettings() }
+        sidebar.onNewTab = { [weak self] in self?.handleNewTab() }
+        sidebar.onLayoutChange = { [weak self] in
+            guard let self else { return }
+            self.chrome.sidebarWidth = self.sidebar.preferredWidth
+        }
+        chrome.sidebarWidth = sidebar.preferredWidth
+    }
+
+    @objc func handleToggleSidebar() {
+        sidebar.toggle()
+        chrome.sidebarWidth = sidebar.preferredWidth
     }
 
     private func buildNowPlaying() {
@@ -263,6 +319,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             statsOverlay.isHidden = false
             statsOverlay.alphaValue = 0
             refreshStats()
+            refreshAudio()
             Theme.animate(0.16) { self.statsOverlay.animator().alphaValue = 1 }
             let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshStats() }
             RunLoop.main.add(timer, forMode: .common)
@@ -287,15 +344,35 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         guard statsVisible, let tab = selectedTab else { return }
         tab.browserView.evaluate(StatsProbe.script) { [weak self] result in
             guard let self, self.statsVisible else { return }
-            self.applyStats(page: result as? [String: Any] ?? [:], tab: tab)
+            self.pageRows = self.makePageRows(result as? [String: Any] ?? [:], tab: tab)
+            self.renderStats()
         }
     }
 
-    private func applyStats(page: [String: Any], tab: Tab) {
+    private func refreshAudio() {
+        guard statsVisible, let tab = selectedTab else { return }
+        tab.browserView.evaluate(AudioProbeScript.call) { [weak self] result in
+            guard let self, self.statsVisible else { return }
+            guard let payload = result as? [String: Any], let snapshot = AudioSnapshot(payload) else {
+                self.audioRows = []
+                self.videoRows = []
+                self.spectrumValues = []
+                self.renderStats()
+                return
+            }
+            self.audioRows = self.makeAudioRows(snapshot)
+            self.spectrumValues = snapshot.spectrum
+            self.videoRows = VideoSnapshot(payload["video"] as? [String: Any])
+                .map { self.makeVideoRows($0, tab: tab) } ?? []
+            self.renderStats()
+        }
+    }
+
+    private func makePageRows(_ page: [String: Any], tab: Tab) -> [(String, String)] {
         func number(_ key: String) -> Double { (page[key] as? NSNumber)?.doubleValue ?? 0 }
         let adblock = FGAdblock.shared
 
-        let entries: [(String, String)] = [
+        return [
             ("origin", page["origin"] as? String ?? "—"),
             ("dom nodes", number("nodes") > 0 ? String(Int(number("nodes"))) : "—"),
             ("requests", String(Int(number("resources")))),
@@ -309,33 +386,23 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             ("ads defused", String(Int(number("defused")))),
             ("hidden here", String(tab.browserView.cosmeticSelectorCount)),
             ("blocked total", String(adblock.blockedCount)),
+            ("requests seen", String(adblock.requestsSeen)),
             ("popups blocked", String(adblock.blockedPopupCount)),
             ("filter rules", String(adblock.ruleCount)),
-            ("scriptlets", String(adblock.resourceCount)),
             ("open tabs", String(tabs.count)),
             ("helper processes", String(FGEngine.helperProcessCount())),
             ("browser memory", StatsFormat.bytes(Double(FGEngine.memoryFootprint()))),
             ("chromium", FGEngine.cefVersion())
         ]
-        statsOverlay.apply(entries)
-        positionStats()
     }
 
-    private func refreshAudio() {
-        guard statsVisible, let tab = selectedTab else { return }
-        tab.browserView.evaluate(AudioProbeScript.call) { [weak self] result in
-            guard let self, self.statsVisible else { return }
-            guard let payload = result as? [String: Any], let snapshot = AudioSnapshot(payload) else {
-                self.statsOverlay.applyAudio([], spectrum: [])
-                self.positionStats()
-                return
-            }
-            self.statsOverlay.applyAudio(self.audioRows(snapshot), spectrum: snapshot.spectrum)
-            self.positionStats()
-        }
+    private func kilohertz(_ value: Double) -> String {
+        guard value > 0 else { return "—" }
+        let k = value / 1000
+        return (k == k.rounded() ? String(format: "%.0f", k) : String(format: "%.1f", k)) + " kHz"
     }
 
-    private func audioRows(_ snapshot: AudioSnapshot) -> [(String, String)] {
+    private func makeAudioRows(_ snapshot: AudioSnapshot) -> [(String, String)] {
         let device = FGAudioDevice.currentOutput()
         let deviceRate = (device["sampleRate"] as? NSNumber)?.doubleValue ?? 0
         let bitDepth = (device["bitDepth"] as? NSNumber)?.intValue ?? 0
@@ -345,43 +412,76 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         let name = device["name"] as? String ?? "Unknown"
         let transport = device["transport"] as? String ?? "—"
 
-        func khz(_ value: Double) -> String {
-            guard value > 0 else { return "—" }
-            let k = value / 1000
-            return (k == k.rounded() ? String(format: "%.0f", k) : String(format: "%.1f", k)) + " kHz"
-        }
-
         var rows: [(String, String)] = [
             ("source", snapshot.host),
             ("codec", snapshot.codecLabel),
             ("bitrate", snapshot.kbps > 0 ? "\(snapshot.kbps) kbps" : "measuring…"),
-            ("codec rate", snapshot.nativeRate.map(khz) ?? "unknown"),
-            ("mix rate", khz(snapshot.contextRate)),
+            ("codec rate", snapshot.nativeRate.map(kilohertz) ?? "unknown"),
+            ("mix rate", kilohertz(snapshot.contextRate)),
             ("channels", snapshot.channels > 0 ? String(snapshot.channels) : "—"),
             ("output", name),
-            ("device rate", khz(deviceRate)),
+            ("device rate", kilohertz(deviceRate)),
             ("bit depth", bitDepth > 0
-                ? "\(bitDepth)-bit " + (sampleFormat.isEmpty ? "" : sampleFormat)
+                ? "\(bitDepth)-bit " + sampleFormat
                 : (mixDepth > 0 ? "\(mixDepth)-bit mix" : "—")),
             ("transport", transport + (deviceChannels > 0 ? " · \(deviceChannels)ch" : ""))
         ]
 
         if let native = snapshot.nativeRate, deviceRate > 0 {
-            if abs(native - deviceRate) < 1 {
-                rows.append(("resampling", "none · " + khz(deviceRate)))
-            } else {
-                rows.append(("resampling", khz(native) + " → " + khz(deviceRate)))
-            }
+            rows.append(("resampling", abs(native - deviceRate) < 1
+                ? "none · " + kilohertz(deviceRate)
+                : kilohertz(native) + " → " + kilohertz(deviceRate)))
         } else {
             rows.append(("resampling", "unknown"))
         }
-
         return rows
     }
 
+    private func makeVideoRows(_ snapshot: VideoSnapshot, tab: Tab) -> [(String, String)] {
+        let properties = tab.browserView.mediaProperties
+        let decoder = properties["kVideoDecoderName"] as? String
+            ?? properties["video_decoder_name"] as? String
+        let platform = properties["kIsPlatformVideoDecoder"] ?? properties["is_platform_video_decoder"]
+        let hardware: String
+        if let flag = platform as? Bool {
+            hardware = flag ? "hardware" : "software"
+        } else if let text = platform as? String {
+            hardware = text == "true" ? "hardware" : "software"
+        } else {
+            hardware = "unknown"
+        }
+
+        let dropRate = snapshot.totalFrames > 0
+            ? Double(snapshot.dropped) / Double(snapshot.totalFrames) * 100
+            : 0
+
+        return [
+            ("codec", snapshot.codecLabel),
+            ("resolution", snapshot.resolutionLabel),
+            ("framerate", snapshot.fps > 0 ? "\(snapshot.fps) fps" : "—"),
+            ("bitrate", snapshot.kbps > 0 ? "\(snapshot.kbps) kbps" : "measuring…"),
+            ("bit depth", snapshot.depthLabel),
+            ("dropped", snapshot.totalFrames > 0
+                ? String(format: "%d of %d · %.2f%%", snapshot.dropped, snapshot.totalFrames, dropRate)
+                : "—"),
+            ("decoder", decoder ?? "unknown"),
+            ("decode path", hardware),
+            ("display range", snapshot.displayHDR ? "HDR capable" : "SDR")
+        ]
+    }
+
+    private func renderStats() {
+        var sections: [(String, [(String, String)])] = [("STATS FOR NERDS", pageRows)]
+        if !audioRows.isEmpty { sections.append(("AUDIO PATH", audioRows)) }
+        if !videoRows.isEmpty { sections.append(("VIDEO PIPELINE", videoRows)) }
+        statsOverlay.apply(sections: sections, spectrum: audioRows.isEmpty ? [] : spectrumValues)
+        positionStats()
+    }
+
     private func positionStats() {
-        let width: CGFloat = 306
-        let height = statsOverlay.preferredHeight
+        let width: CGFloat = 336
+        let available = max(160, contentContainer.bounds.height - 36)
+        let height = min(statsOverlay.contentHeight + 2, available)
         statsOverlay.frame = NSRect(x: contentContainer.bounds.width - width - 18,
                                     y: contentContainer.bounds.height - height - 18,
                                     width: width, height: height)
@@ -516,7 +616,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     @objc func handlePrint() { selectedTab?.browserView.printPage() }
     @objc func handleForceReload() { selectedTab?.browserView.reloadIgnoringCache() }
     @objc func handleStop() { selectedTab?.browserView.stopLoading() }
-    @objc func handleHome() { navigate(to: "forge://home/") }
+    @objc func handleHome() { navigate(to: homeURL) }
 
     @objc func handleNextTab() {
         guard !tabs.isEmpty else { return }
@@ -588,10 +688,16 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         let rightWidth: CGFloat = 30 + 6 + 46 + pad
         let counterWidth: CGFloat = 78
         let pillWidth: CGFloat = bypassPill.isHidden ? 0 : 150
-        let fieldWidth = max(140, toolbarView.bounds.width - x - rightWidth - counterWidth - pillWidth - 16)
+        let privateWidth: CGFloat = privatePill.isHidden ? 0 : 74
+        let fieldWidth = max(140, toolbarView.bounds.width - x - rightWidth - counterWidth - pillWidth - privateWidth - 16)
 
         addressBox.frame = NSRect(x: x, y: y, width: fieldWidth, height: fieldH)
         x += fieldWidth + 10
+
+        if !privatePill.isHidden {
+            privatePill.frame = NSRect(x: x, y: y + 6, width: 66, height: 18)
+            x += 74
+        }
 
         if !bypassPill.isHidden {
             bypassPill.frame = NSRect(x: x, y: y + 6, width: 150, height: 18)
@@ -606,6 +712,9 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     private func startMonitors() {
         DevServerMonitor.shared.onChange = { [weak self] _ in self?.pushState() }
+        DevServerMonitor.shared.onRestart = { [weak self] server in
+            self?.reloadTabs(onPort: server.port)
+        }
         DevServerMonitor.shared.start()
 
         FGStateStore.shared.setCommandHandler { [weak self] action, payload in
@@ -627,7 +736,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     @discardableResult
     func newTab(url: String, select: Bool = true) -> Tab {
-        let tab = Tab(url: url)
+        let tab = Tab(url: url, isPrivate: isPrivate)
         tab.browserView.browserDelegate = self
         tabs.append(tab)
 
@@ -655,7 +764,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tab.browserView.removeFromSuperview()
 
         if tabs.isEmpty {
-            newTab(url: "forge://home/")
+            newTab(url: homeURL)
             return
         }
         selectedIndex = min(selectedIndex, tabs.count - 1)
@@ -713,6 +822,31 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         refreshChrome()
     }
 
+    @objc func handleDuplicateTab() {
+        guard let id = selectedTab?.id else { return }
+        duplicateTab(id)
+    }
+
+    @objc func handleToggleMuteTab() {
+        guard let id = selectedTab?.id else { return }
+        toggleMute(id)
+    }
+
+    @objc func handleCloseOtherTabs() {
+        guard let id = selectedTab?.id else { return }
+        closeOtherTabs(id)
+    }
+
+    @objc func handleCloseTabsToTheLeft() {
+        guard let id = selectedTab?.id else { return }
+        closeTabsToTheLeft(id)
+    }
+
+    @objc func handleCloseTabsToTheRight() {
+        guard let id = selectedTab?.id else { return }
+        closeTabsToTheRight(id)
+    }
+
     @objc func handleNewTabGroup() {
         guard let tab = selectedTab else { return }
         let group = TabGroup(name: "Group \(groups.count + 1)", colorIndex: groups.count)
@@ -752,6 +886,125 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         refreshChrome()
     }
 
+    private func reloadTabs(onPort port: Int) {
+        let needles = ["localhost:\(port)", "127.0.0.1:\(port)", "[::1]:\(port)"]
+        for tab in tabs where needles.contains(where: { tab.url.contains($0) }) {
+            tab.browserView.reloadIgnoringCache()
+        }
+    }
+
+    private func tabIndex(_ id: UUID) -> Int? {
+        tabs.firstIndex { $0.id == id }
+    }
+
+    func duplicateTab(_ id: UUID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        newTab(url: tab.url)
+    }
+
+    func duplicateInPrivateWindow(_ id: UUID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        (NSApp.delegate as? ForgeAppDelegate)?.presentPrivateWindow(with: tab.url)
+    }
+
+    func toggleMute(_ id: UUID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        tab.isMuted.toggle()
+        refreshChrome()
+    }
+
+    func closeOtherTabs(_ id: UUID) {
+        for target in tabs.map({ $0.id }) where target != id { closeTab(id: target) }
+    }
+
+    func closeTabsToTheLeft(_ id: UUID) {
+        guard let index = tabIndex(id), index > 0 else { return }
+        for target in tabs.prefix(index).map({ $0.id }) { closeTab(id: target) }
+    }
+
+    func closeTabsToTheRight(_ id: UUID) {
+        guard let index = tabIndex(id), index + 1 < tabs.count else { return }
+        for target in tabs.suffix(from: index + 1).map({ $0.id }) { closeTab(id: target) }
+    }
+
+    private func tabContextMenu(for id: UUID) -> NSMenu? {
+        guard let index = tabIndex(id) else { return nil }
+        let tab = tabs[index]
+        let menu = NSMenu()
+
+        menu.addItem(ClosureMenuItem("New Tab") { [weak self] in self?.handleNewTab() })
+        menu.addItem(ClosureMenuItem("Duplicate Tab") { [weak self] in self?.duplicateTab(id) })
+        menu.addItem(ClosureMenuItem("Duplicate in Private Window") { [weak self] in
+            self?.duplicateInPrivateWindow(id)
+        })
+        menu.addItem(.separator())
+
+        menu.addItem(ClosureMenuItem(tab.isMuted ? "Unmute Tab" : "Mute Tab") { [weak self] in
+            self?.toggleMute(id)
+        })
+        menu.addItem(ClosureMenuItem("Reload Tab") { [weak self] in
+            self?.tabs.first { $0.id == id }?.browserView.reload()
+        })
+        menu.addItem(.separator())
+
+        let groupItem = NSMenuItem(title: "Group", action: nil, keyEquivalent: "")
+        let groupMenu = NSMenu()
+        groupMenu.addItem(ClosureMenuItem("New Group with This Tab") { [weak self] in
+            guard let self else { return }
+            self.selectedIndex = index
+            self.handleNewTabGroup()
+        })
+        for group in groups where group.id != tab.groupID {
+            groupMenu.addItem(ClosureMenuItem(group.name) { [weak self] in
+                guard let self else { return }
+                self.selectedIndex = index
+                self.addSelectedTabToGroup(group.id)
+            })
+        }
+        if tab.groupID != nil {
+            groupMenu.addItem(.separator())
+            groupMenu.addItem(ClosureMenuItem("Remove from Group") { [weak self] in
+                guard let self else { return }
+                self.selectedIndex = index
+                self.handleUngroupTab()
+            })
+        }
+        groupItem.submenu = groupMenu
+        menu.addItem(groupItem)
+        menu.addItem(.separator())
+
+        menu.addItem(ClosureMenuItem("Close Tab") { [weak self] in self?.closeTab(id: id) })
+        menu.addItem(ClosureMenuItem("Close Other Tabs", enabled: tabs.count > 1) { [weak self] in
+            self?.closeOtherTabs(id)
+        })
+        menu.addItem(ClosureMenuItem("Close Tabs to the Left", enabled: index > 0) { [weak self] in
+            self?.closeTabsToTheLeft(id)
+        })
+        menu.addItem(ClosureMenuItem("Close Tabs to the Right", enabled: index + 1 < tabs.count) { [weak self] in
+            self?.closeTabsToTheRight(id)
+        })
+        return menu
+    }
+
+    private func tabOverflowMenu() -> NSMenu? {
+        guard !tabs.isEmpty else { return nil }
+        let menu = NSMenu()
+        for (index, tab) in tabs.enumerated() {
+            let title = tab.displayTitle.count > 60
+                ? String(tab.displayTitle.prefix(60)) + "…"
+                : tab.displayTitle
+            let icon = tab.favicon?.copy() as? NSImage
+            icon?.size = NSSize(width: 14, height: 14)
+            let item = ClosureMenuItem(title,
+                                       state: index == selectedIndex ? .on : .off,
+                                       image: icon) { [weak self] in
+                self?.selectTab(id: tab.id)
+            }
+            menu.addItem(item)
+        }
+        return menu
+    }
+
     private func selectTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         selectedIndex = index
@@ -766,6 +1019,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         if findVisible { positionFindBar() }
         if statsVisible { positionStats() }
         tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
+        sidebar.update(tabs: tabs, groups: groups, selectedIndex: selectedIndex)
         updateToolbarState()
     }
 
@@ -801,7 +1055,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     // MARK: - Actions
 
     @objc func handleNewTab() {
-        newTab(url: "forge://home/")
+        newTab(url: homeURL)
         window?.makeFirstResponder(addressField)
     }
 
@@ -1060,6 +1314,14 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
                 Trays.renameTray(from: from, to: to)
                 pushState(force: true)
             }
+        case "setDevServerScope":
+            DevServerMonitor.shared.stop()
+            DevServerMonitor.showAll = payload["all"] as? Bool ?? false
+            DevServerMonitor.shared.start()
+            pushState(force: true)
+        case "setDevServerAutoReload":
+            DevServerMonitor.autoReload = payload["enabled"] as? Bool ?? true
+            pushState(force: true)
         case "setTrays":
             if let raw = payload["trays"] as? [[String: Any]] {
                 let parsed: [Trays.Tray] = raw.compactMap { item in
@@ -1136,6 +1398,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             orientation.rawValue,
             servers.map { String($0.port) }.joined(separator: ","),
             String(FGAdblock.shared.blockedCount),
+            DevServerMonitor.showAll ? "all" : "dev",
             String(downloads.count),
             String(StatsStore.shared.lifetimeBlocked),
             String(FGAdblock.shared.blockedPopupCount)
@@ -1155,6 +1418,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             ["port": $0.port, "process": $0.processName, "url": $0.url]
         }, forStateKey: "devServers")
         store.setValue(DevTools.all.map { ["id": $0.id, "name": $0.name, "url": $0.url, "group": $0.group] }, forStateKey: "tools")
+        store.setValue(DevServerMonitor.showAll, forStateKey: "devServersShowAll")
+        store.setValue(DevServerMonitor.autoReload, forStateKey: "devServerAutoReload")
 
         let statsPayload: [String: Any] = [
             "lifetimeBlocked": StatsStore.shared.lifetimeBlocked,
@@ -1177,6 +1442,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             "byType": FGAdblock.shared.blockedByType
         ], forStateKey: "shields")
         store.setValue(FGEngine.cefVersion(), forStateKey: "cefVersion")
+        store.setValue(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+                       forStateKey: "version")
         store.setValue(stateRevision, forStateKey: "revision")
     }
 
@@ -1206,7 +1473,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     func browserView(_ view: FGBrowserView, didChangeTitle title: String) {
         guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
         tab.title = title
-        HistoryStore.shared.record(url: tab.url, title: title)
+        if !isPrivate { HistoryStore.shared.record(url: tab.url, title: title) }
         tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         if tab === selectedTab { updateToolbarState() }
     }

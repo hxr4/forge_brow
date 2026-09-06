@@ -5,6 +5,9 @@
 
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
+#include "include/cef_request_context.h"
+
+#import "FGSchemeHandler.h"
 #include "include/internal/cef_types_mac.h"
 
 @interface FGBrowserView ()
@@ -20,6 +23,7 @@
   NSString* _currentTitle;
   NSImage* _favicon;
   NSUInteger _cosmeticSelectorCount;
+  NSMutableDictionary* _mediaProperties;
   NSString* _faviconHost;
   BOOL _isLoading;
   BOOL _canGoBack;
@@ -36,9 +40,30 @@ static NSString* gDocumentStartScript = nil;
   gDocumentStartScript = [documentStartScript copy];
 }
 
+namespace {
+
+CefRefPtr<CefRequestContext> PrivateRequestContext() {
+  static CefRefPtr<CefRequestContext> context;
+  if (!context) {
+    CefRequestContextSettings settings;
+    context = CefRequestContext::CreateContext(settings, nullptr);
+    FGRegisterSchemeHandlerFactoryOn(context);
+  }
+  return context;
+}
+
+}  // namespace
+
 - (instancetype)initWithFrame:(NSRect)frame initialURL:(NSString *)url {
+  return [self initWithFrame:frame initialURL:url privateBrowsing:NO];
+}
+
+- (instancetype)initWithFrame:(NSRect)frame
+                   initialURL:(NSString *)url
+              privateBrowsing:(BOOL)privateBrowsing {
   self = [super initWithFrame:frame];
   if (self) {
+    _privateBrowsing = privateBrowsing;
     _pendingURL = [url copy] ?: @"about:blank";
     _currentURL = _pendingURL;
     _currentTitle = @"";
@@ -70,9 +95,12 @@ static NSString* gDocumentStartScript = nil;
   CefBrowserSettings settings;
   settings.background_color = CefColorSetARGB(255, 0, 0, 0);
 
+  CefRefPtr<CefRequestContext> context =
+      _privateBrowsing ? PrivateRequestContext() : nullptr;
+
   CefBrowserHost::CreateBrowser(window_info, _client.get(),
                                 CefString(_pendingURL.UTF8String), settings,
-                                nullptr, nullptr);
+                                nullptr, context);
 }
 
 - (CefRefPtr<CefBrowser>)cefBrowser {
@@ -119,6 +147,17 @@ static NSString* gDocumentStartScript = nil;
 
 - (void)handleCosmeticSelectorCount:(NSUInteger)count {
   _cosmeticSelectorCount = count;
+}
+
+- (NSDictionary<NSString *, id> *)mediaProperties {
+  return _mediaProperties ?: @{};
+}
+
+- (void)mergeMediaProperties:(NSDictionary *)properties {
+  if (!_mediaProperties) {
+    _mediaProperties = [NSMutableDictionary dictionary];
+  }
+  [_mediaProperties addEntriesFromDictionary:properties];
 }
 
 - (BOOL)isLoading {
@@ -245,6 +284,21 @@ static NSString* gDocumentStartScript = nil;
 - (void)editPaste { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->Paste(); }
 - (void)editSelectAll { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->SelectAll(); }
 
+- (void)setAudioMuted:(BOOL)muted {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (browser) {
+    browser->GetHost()->SetAudioMuted(muted ? true : false);
+  }
+}
+
+- (BOOL)isAudioMuted {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (!browser) {
+    return NO;
+  }
+  return browser->GetHost()->IsAudioMuted() ? YES : NO;
+}
+
 - (void)printPage {
   CefRefPtr<CefBrowser> browser = [self cefBrowser];
   if (browser) browser->GetHost()->Print();
@@ -314,6 +368,7 @@ static NSString* gDocumentStartScript = nil;
   NSString* host = [NSURL URLWithString:url].host ?: @"";
   if (_faviconHost && ![_faviconHost isEqualToString:host]) {
     [self handleFaviconChange:nil];
+    [_mediaProperties removeAllObjects];
   }
   _faviconHost = [host copy];
   _currentURL = [url copy];

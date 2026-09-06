@@ -28,6 +28,7 @@ enum Theme {
     static let bone = NSColor(rgb: 0xB9BBA8)
     static let muted = NSColor(rgb: 0x6B6F5E)
     static let warn = NSColor(rgb: 0xFF8A3D)
+    static let privateAccent = NSColor(rgb: 0xA98CE8)
 
     static let groupPalette: [NSColor] = [
         NSColor(rgb: 0x96965A),

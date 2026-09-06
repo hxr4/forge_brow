@@ -1,10 +1,15 @@
 import AppKit
 
+final class ClippingView: NSView {
+    override var isFlipped: Bool { false }
+}
+
 final class TabStripView: NSView {
 
     var orientation: TabOrientation = .horizontal {
         didSet {
             guard orientation != oldValue else { return }
+            scrollOffset = 0
             layoutItems(animated: true)
         }
     }
@@ -13,6 +18,8 @@ final class TabStripView: NSView {
     var onClose: ((UUID) -> Void)?
     var onNewTab: (() -> Void)?
     var onToggleGroup: ((UUID) -> Void)?
+    var menuProvider: ((UUID) -> NSMenu?)?
+    var overflowMenuProvider: (() -> NSMenu?)?
 
     private enum StripEntry {
         case group(UUID)
@@ -30,13 +37,25 @@ final class TabStripView: NSView {
     private var headersByID: [UUID: TabGroupHeaderView] = [:]
     private var pendingEntrance: Set<UUID> = []
     private var entries: [StripEntry] = []
+    private var selectedTabID: UUID?
+
+    private let clip = ClippingView()
     private let newTabButton = NSButton()
+    private let overflowButton = NSButton()
     private let edgeView = NSView()
+
+    private var scrollOffset: CGFloat = 0
+    private var contentLength: CGFloat = 0
+    private var viewportLength: CGFloat = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = Theme.void.cgColor
+
+        clip.wantsLayer = true
+        clip.layer?.masksToBounds = true
+        addSubview(clip)
 
         newTabButton.title = "+"
         newTabButton.font = .systemFont(ofSize: 15, weight: .light)
@@ -46,7 +65,20 @@ final class TabStripView: NSView {
         newTabButton.action = #selector(handleNewTab)
         newTabButton.wantsLayer = true
         newTabButton.layer?.cornerRadius = Theme.Metrics.tabRadius
+        newTabButton.toolTip = "New Tab"
         addSubview(newTabButton)
+
+        overflowButton.title = "⌄"
+        overflowButton.font = .systemFont(ofSize: 13, weight: .medium)
+        overflowButton.isBordered = false
+        overflowButton.contentTintColor = Theme.bone
+        overflowButton.target = self
+        overflowButton.action = #selector(handleOverflow)
+        overflowButton.wantsLayer = true
+        overflowButton.layer?.cornerRadius = Theme.Metrics.tabRadius
+        overflowButton.isHidden = true
+        overflowButton.toolTip = "All tabs"
+        addSubview(overflowButton)
 
         edgeView.wantsLayer = true
         edgeView.layer?.backgroundColor = Theme.line.cgColor
@@ -56,6 +88,29 @@ final class TabStripView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func handleNewTab() { onNewTab?() }
+
+    @objc private func handleOverflow() {
+        guard let menu = overflowMenuProvider?() else { return }
+        let origin = NSPoint(x: overflowButton.frame.minX,
+                             y: orientation == .horizontal ? overflowButton.frame.minY : overflowButton.frame.maxY)
+        menu.popUp(positioning: nil, at: origin, in: self)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard contentLength > viewportLength else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let delta = orientation == .horizontal
+            ? (abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) ? event.scrollingDeltaX : event.scrollingDeltaY)
+            : event.scrollingDeltaY
+        scrollOffset = clampedOffset(scrollOffset - delta)
+        layoutItems(animated: false)
+    }
+
+    private func clampedOffset(_ value: CGFloat) -> CGFloat {
+        max(0, min(value, max(0, contentLength - viewportLength)))
+    }
 
     func update(with tabs: [Tab], groups: [TabGroup], selectedIndex: Int) {
         var incoming: [StripEntry] = []
@@ -80,6 +135,8 @@ final class TabStripView: NSView {
         }
 
         var structureChanged = entries.map(\.key) != incoming.map(\.key)
+        let previousSelection = selectedTabID
+        selectedTabID = tabs.indices.contains(selectedIndex) ? tabs[selectedIndex].id : nil
 
         for (id, view) in itemsByID where !visibleTabIDs.contains(id) {
             structureChanged = true
@@ -102,7 +159,7 @@ final class TabStripView: NSView {
                 structureChanged = true
                 header = TabGroupHeaderView(groupID: group.id)
                 header.onToggle = { [weak self] in self?.onToggleGroup?(group.id) }
-                addSubview(header)
+                clip.addSubview(header)
                 headersByID[group.id] = header
             }
             header.apply(group, count: counts[group.id] ?? 0)
@@ -119,7 +176,8 @@ final class TabStripView: NSView {
                 pendingEntrance.insert(tab.id)
                 view.onSelect = { [weak self] in self?.onSelect?(tab.id) }
                 view.onClose = { [weak self] in self?.onClose?(tab.id) }
-                addSubview(view)
+                view.menuProvider = { [weak self] in self?.menuProvider?(tab.id) }
+                clip.addSubview(view)
                 itemsByID[tab.id] = view
             }
             let group = tab.groupID.flatMap { id in groups.first { $0.id == id } }
@@ -129,12 +187,16 @@ final class TabStripView: NSView {
                 active: index == selectedIndex,
                 bypass: tab.hasActiveBypass,
                 busy: tab.isLoading,
+                muted: tab.isMuted,
                 groupColor: group?.color
             )
         }
 
         entries = incoming
-        if structureChanged { layoutItems(animated: true) }
+        if structureChanged || previousSelection != selectedTabID {
+            layoutItems(animated: structureChanged)
+            revealSelected()
+        }
     }
 
     override func layout() {
@@ -144,6 +206,35 @@ final class TabStripView: NSView {
 
     private var isLayingOut = false
 
+    private func revealSelected() {
+        guard let id = selectedTabID, let frame = lastFrames["t" + id.uuidString] else { return }
+        guard contentLength > viewportLength else { return }
+
+        if orientation == .horizontal {
+            let leading = frame.minX + scrollOffset
+            let trailing = frame.maxX + scrollOffset
+            if leading < scrollOffset {
+                scrollOffset = clampedOffset(leading - 8)
+            } else if trailing > scrollOffset + viewportLength {
+                scrollOffset = clampedOffset(trailing - viewportLength + 8)
+            } else {
+                return
+            }
+        } else {
+            let top = contentLength - (frame.maxY + scrollOffset)
+            if top < scrollOffset {
+                scrollOffset = clampedOffset(top - 8)
+            } else if top + frame.height > scrollOffset + viewportLength {
+                scrollOffset = clampedOffset(top + frame.height - viewportLength + 8)
+            } else {
+                return
+            }
+        }
+        layoutItems(animated: false)
+    }
+
+    private var lastFrames: [String: NSRect] = [:]
+
     private func layoutItems(animated: Bool) {
         guard !isLayingOut else { return }
         isLayingOut = true
@@ -152,22 +243,34 @@ final class TabStripView: NSView {
         let inset = Theme.Metrics.stripInset
         let height = Theme.Metrics.tabHeight
         let gap: CGFloat = 5
+        let buttonSize: CGFloat = 28
 
         var frames: [String: NSRect] = [:]
-        var newTabFrame = NSRect.zero
 
         if orientation == .horizontal {
-            var headerWidth: CGFloat = 0
+            var needed: CGFloat = 0
             var tabCount: CGFloat = 0
             for entry in entries {
                 switch entry {
-                case .group(let id): headerWidth += (headersByID[id]?.preferredWidth ?? 70) + gap
+                case .group(let id): needed += (headersByID[id]?.preferredWidth ?? 70) + gap
                 case .tab: tabCount += 1
                 }
             }
-            let available = bounds.width - inset * 2 - 34 - headerWidth
-            let width = min(190, max(72, (available - gap * max(tabCount - 1, 0)) / max(tabCount, 1)))
-            var x = inset
+
+            let reserved = inset + buttonSize + gap + buttonSize + inset
+            viewportLength = max(60, bounds.width - reserved)
+            let idealTabWidth: CGFloat = 190
+            let minimumTabWidth: CGFloat = 108
+            let roomForTabs = viewportLength - needed - gap * max(tabCount - 1, 0)
+            let width = tabCount > 0
+                ? min(idealTabWidth, max(minimumTabWidth, roomForTabs / tabCount))
+                : idealTabWidth
+            contentLength = needed + width * tabCount + gap * max(tabCount - 1, 0)
+            scrollOffset = clampedOffset(scrollOffset)
+
+            clip.frame = NSRect(x: inset, y: 0, width: viewportLength, height: bounds.height)
+
+            var x: CGFloat = -scrollOffset
             let y = (bounds.height - height) / 2
             for entry in entries {
                 switch entry {
@@ -180,10 +283,24 @@ final class TabStripView: NSView {
                     x += width + gap
                 }
             }
-            newTabFrame = NSRect(x: min(x, bounds.width - inset - 28), y: y, width: 28, height: height)
+
+            let overflowing = contentLength > viewportLength + 0.5
+            overflowButton.isHidden = !overflowing
+            overflowButton.frame = NSRect(x: bounds.width - inset - buttonSize * 2 - gap,
+                                          y: y, width: buttonSize, height: height)
+            newTabButton.frame = NSRect(x: bounds.width - inset - buttonSize,
+                                        y: y, width: buttonSize, height: height)
         } else {
             let width = bounds.width - inset * 2
-            var y = bounds.height - inset - height
+            let reserved = inset + height + inset
+            viewportLength = max(60, bounds.height - reserved)
+            contentLength = CGFloat(entries.count) * (height + gap)
+            scrollOffset = clampedOffset(scrollOffset)
+
+            clip.frame = NSRect(x: 0, y: bounds.height - inset - viewportLength,
+                                width: bounds.width, height: viewportLength)
+
+            var y = viewportLength - height + scrollOffset
             for entry in entries {
                 switch entry {
                 case .group:
@@ -193,9 +310,16 @@ final class TabStripView: NSView {
                 }
                 y -= height + gap
             }
-            newTabFrame = NSRect(x: inset, y: y, width: width, height: height)
+
+            overflowButton.isHidden = contentLength <= viewportLength + 0.5
+            overflowButton.frame = NSRect(x: bounds.width - inset - buttonSize, y: inset,
+                                          width: buttonSize, height: height)
+            newTabButton.frame = NSRect(x: inset, y: inset,
+                                        width: overflowButton.isHidden ? width : width - buttonSize - gap,
+                                        height: height)
         }
 
+        lastFrames = frames
         layer?.backgroundColor = (orientation == .vertical ? Theme.ink : Theme.void).cgColor
         edgeView.isHidden = orientation == .horizontal
         edgeView.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
@@ -228,11 +352,6 @@ final class TabStripView: NSView {
                         view.alphaValue = 1
                     }
                 }
-            }
-            if animated {
-                self.newTabButton.animator().frame = newTabFrame
-            } else {
-                self.newTabButton.frame = newTabFrame
             }
         }
 

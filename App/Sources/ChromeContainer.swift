@@ -14,6 +14,13 @@ final class ChromeContainer: NSView {
     var content: NSView?
     var divider: NSView?
     var nowPlaying: NSView?
+    var sidebar: NSView?
+    var sidebarWidth: CGFloat = 0 {
+        didSet {
+            guard sidebarWidth != oldValue else { return }
+            layoutSubtree(animated: true)
+        }
+    }
 
     var nowPlayingVisible = false {
         didSet {
@@ -48,22 +55,29 @@ final class ChromeContainer: NSView {
         var dividerFrame = NSRect.zero
         var contentFrame = NSRect.zero
 
+        var sidebarFrame = NSRect.zero
+
         if orientation == .horizontal {
             let stripHeight: CGFloat = 42
+            let top = stripHeight + toolbarHeight
             stripFrame = NSRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
             toolbarFrame = NSRect(x: 0, y: stripHeight, width: bounds.width, height: toolbarHeight)
-            dividerFrame = NSRect(x: 0, y: stripHeight + toolbarHeight - 1, width: bounds.width, height: 1)
-            contentFrame = NSRect(x: 0, y: stripHeight + toolbarHeight,
-                                  width: bounds.width,
-                                  height: max(0, usableHeight - stripHeight - toolbarHeight))
+            dividerFrame = NSRect(x: 0, y: top - 1, width: bounds.width, height: 1)
+            sidebarFrame = NSRect(x: 0, y: top, width: sidebarWidth,
+                                  height: max(0, usableHeight - top))
+            contentFrame = NSRect(x: sidebarWidth, y: top,
+                                  width: max(0, bounds.width - sidebarWidth),
+                                  height: max(0, usableHeight - top))
         } else {
-            let sidebar = Theme.Metrics.sidebarWidth
+            let stripWidth = Theme.Metrics.sidebarWidth
             toolbarFrame = NSRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
             dividerFrame = NSRect(x: 0, y: toolbarHeight - 1, width: bounds.width, height: 1)
-            stripFrame = NSRect(x: 0, y: toolbarHeight, width: sidebar,
+            sidebarFrame = NSRect(x: 0, y: toolbarHeight, width: sidebarWidth,
+                                  height: max(0, usableHeight - toolbarHeight))
+            stripFrame = NSRect(x: sidebarWidth, y: toolbarHeight, width: stripWidth,
                                 height: max(0, usableHeight - toolbarHeight))
-            contentFrame = NSRect(x: sidebar, y: toolbarHeight,
-                                  width: max(0, bounds.width - sidebar),
+            contentFrame = NSRect(x: sidebarWidth + stripWidth, y: toolbarHeight,
+                                  width: max(0, bounds.width - stripWidth - sidebarWidth),
                                   height: max(0, usableHeight - toolbarHeight))
         }
 
@@ -78,6 +92,7 @@ final class ChromeContainer: NSView {
                 divider.animator().frame = dividerFrame
                 content.animator().frame = contentFrame
                 nowPlaying?.animator().frame = mediaFrame
+                sidebar?.animator().frame = sidebarFrame
             }
         } else {
             tabStrip.frame = stripFrame
@@ -85,12 +100,17 @@ final class ChromeContainer: NSView {
             divider.frame = dividerFrame
             content.frame = contentFrame
             nowPlaying?.frame = mediaFrame
+            sidebar?.frame = sidebarFrame
         }
     }
 }
 
 final class AddressFieldContainer: NSView {
     var isFocused = false {
+        didSet { applyStyle() }
+    }
+
+    var accentOverride: NSColor? {
         didSet { applyStyle() }
     }
 
@@ -107,8 +127,9 @@ final class AddressFieldContainer: NSView {
     private func applyStyle() {
         Theme.animate(0.22) {
             self.layer?.backgroundColor = Theme.panel.cgColor
-            self.layer?.borderColor = (self.isFocused ? Theme.moss : Theme.line2).cgColor
-            self.layer?.shadowColor = Theme.acid.cgColor
+            let accent = self.accentOverride ?? Theme.moss
+            self.layer?.borderColor = (self.isFocused ? accent : Theme.line2).cgColor
+            self.layer?.shadowColor = (self.accentOverride ?? Theme.acid).cgColor
             self.layer?.shadowOpacity = self.isFocused ? 0.18 : 0
             self.layer?.shadowRadius = 12
             self.layer?.shadowOffset = .zero

@@ -233,3 +233,10 @@ void FGSetWebResourceRoot(const std::string& path) {
 void FGRegisterSchemeHandlerFactory() {
   CefRegisterSchemeHandlerFactory(kForgeScheme, kForgeHost, new FGSchemeHandlerFactory());
 }
+
+void FGRegisterSchemeHandlerFactoryOn(CefRefPtr<CefRequestContext> context) {
+  if (!context) {
+    return;
+  }
+  context->RegisterSchemeHandlerFactory(kForgeScheme, kForgeHost, new FGSchemeHandlerFactory());
+}

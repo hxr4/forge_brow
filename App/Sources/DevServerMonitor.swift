@@ -13,6 +13,25 @@ final class DevServerMonitor {
 
     private(set) var servers: [DevServer] = []
     var onChange: (([DevServer]) -> Void)?
+    var onRestart: ((DevServer) -> Void)?
+
+    private var lastSeen: [Int: Int] = [:]
+
+    private static let showAllKey = "forge.devServers.showAll"
+    private static let autoReloadKey = "forge.devServers.autoReload"
+
+    static var showAll: Bool {
+        get { UserDefaults.standard.bool(forKey: showAllKey) }
+        set { UserDefaults.standard.set(newValue, forKey: showAllKey) }
+    }
+
+    static var autoReload: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: autoReloadKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: autoReloadKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: autoReloadKey) }
+    }
 
     private var timer: Timer?
     private let scanQueue = DispatchQueue(label: "com.forge.devservers")
@@ -36,7 +55,22 @@ final class DevServerMonitor {
         scanQueue.async { [weak self] in
             let found = DevServerMonitor.listListeningPorts()
             DispatchQueue.main.async {
-                guard let self, found != self.servers else { return }
+                guard let self else { return }
+
+                var restarted: [DevServer] = []
+                for server in found {
+                    if let previousPID = self.lastSeen[server.port], previousPID != server.pid {
+                        restarted.append(server)
+                    }
+                }
+                self.lastSeen = Dictionary(found.map { ($0.port, $0.pid) },
+                                           uniquingKeysWith: { first, _ in first })
+
+                if DevServerMonitor.autoReload {
+                    for server in restarted { self.onRestart?(server) }
+                }
+
+                guard found != self.servers else { return }
                 self.servers = found
                 self.onChange?(found)
             }
@@ -91,7 +125,8 @@ final class DevServerMonitor {
             }
         }
 
-        return results.values.filter(isInteresting).sorted { $0.port < $1.port }
+        let all = results.values.sorted { $0.port < $1.port }
+        return showAll ? all : all.filter(isInteresting)
     }
 
     private static let devProcesses: Set<String> = [
