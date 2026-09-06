@@ -15,6 +15,7 @@ final class SidebarRowView: NSView {
     private let accent = NSView()
     private var tracking: NSTrackingArea?
     private var hovering = false
+    private var pinnedAction = false
     private var active = false
 
     override init(frame frameRect: NSRect) {
@@ -83,7 +84,7 @@ final class SidebarRowView: NSView {
         titleLabel.textColor = active ? Theme.cream : Theme.bone
         let show: CGFloat = (hovering || active) ? 1 : 0
         closeButton.animator().alphaValue = closeButton.isHidden ? 0 : show
-        muteButton.animator().alphaValue = muteButton.isHidden ? 0 : show
+        muteButton.animator().alphaValue = muteButton.isHidden ? 0 : max(show, pinnedAction ? 1 : 0)
     }
 
     func apply(title: String,
@@ -92,7 +93,8 @@ final class SidebarRowView: NSView {
                active isActive: Bool,
                muted: Bool,
                accentColor: NSColor?,
-               closable: Bool) {
+               closable: Bool,
+               blocked: Bool? = nil) {
         titleLabel.stringValue = title
         subtitleLabel.stringValue = subtitle
         subtitleLabel.isHidden = subtitle.isEmpty
@@ -103,9 +105,21 @@ final class SidebarRowView: NSView {
         monogram.isHidden = icon != nil
         monogram.stringValue = (title.first.map(String.init) ?? "?").uppercased()
 
-        closeButton.isHidden = !closable
-        muteButton.isHidden = !closable
-        muteButton.contentTintColor = muted ? Theme.warn : Theme.muted
+        if let blocked {
+            closeButton.isHidden = true
+            muteButton.isHidden = false
+            muteButton.image = NSImage(systemSymbolName: blocked ? "hand.raised.fill" : "hand.raised",
+                                       accessibilityDescription: "Block")
+            muteButton.contentTintColor = blocked ? Theme.warn : Theme.muted
+            pinnedAction = blocked
+        } else {
+            closeButton.isHidden = !closable
+            muteButton.isHidden = !closable
+            muteButton.image = NSImage(systemSymbolName: "speaker.slash.fill",
+                                       accessibilityDescription: "Mute")
+            muteButton.contentTintColor = muted ? Theme.warn : Theme.muted
+            pinnedAction = muted
+        }
 
         accent.isHidden = accentColor == nil
         accent.layer?.backgroundColor = (accentColor ?? .clear).cgColor
@@ -203,11 +217,12 @@ final class SidebarListView: NSView {
 final class SidebarView: NSView {
 
     enum Section: String, CaseIterable {
-        case tabs, tools, bookmarks, history, downloads
+        case tabs, network, tools, bookmarks, history, downloads
 
         var title: String {
             switch self {
             case .tabs: return "Tabs"
+            case .network: return "Network"
             case .tools: return "Tools"
             case .bookmarks: return "Bookmarks"
             case .history: return "History"
@@ -218,6 +233,7 @@ final class SidebarView: NSView {
         var symbol: String {
             switch self {
             case .tabs: return "square.on.square"
+            case .network: return "antenna.radiowaves.left.and.right"
             case .tools: return "square.grid.2x2"
             case .bookmarks: return "bookmark"
             case .history: return "clock"
@@ -233,6 +249,7 @@ final class SidebarView: NSView {
     var onSelectTab: ((UUID) -> Void)?
     var onCloseTab: ((UUID) -> Void)?
     var onMuteTab: ((UUID) -> Void)?
+    var onToggleBlock: ((String) -> Void)?
     var onHome: (() -> Void)?
     var onSettings: (() -> Void)?
     var onNewTab: (() -> Void)?
@@ -385,6 +402,7 @@ final class SidebarView: NSView {
 
         func addRow(title: String, subtitle: String, icon: NSImage?, active: Bool = false,
                     muted: Bool = false, accent: NSColor? = nil, closable: Bool = false,
+                    blocked: Bool? = nil,
                     activate: @escaping () -> Void,
                     close: (() -> Void)? = nil,
                     mute: (() -> Void)? = nil) {
@@ -394,7 +412,7 @@ final class SidebarView: NSView {
             row.onClose = close
             row.onMute = mute
             row.apply(title: title, subtitle: subtitle, icon: icon, active: active,
-                      muted: muted, accentColor: accent, closable: closable)
+                      muted: muted, accentColor: accent, closable: closable, blocked: blocked)
             plan.append((false, rowIndex))
             rowIndex += 1
         }
@@ -434,6 +452,45 @@ final class SidebarView: NSView {
                            activate: { [weak self] in self?.onSelectTab?(tab.id) },
                            close: { [weak self] in self?.onCloseTab?(tab.id) },
                            mute: { [weak self] in self?.onMuteTab?(tab.id) })
+                }
+            }
+
+        case .network:
+            let tab = tabs.indices.contains(selectedIndex) ? tabs[selectedIndex] : nil
+            let entries = tab?.browserView.recentRequests ?? []
+
+            let ordered: [(host: String, seen: Int, blocked: Int)] = entries.compactMap { entry in
+                guard let host = entry["host"] as? String, !host.isEmpty else { return nil }
+                guard matches(host, "") else { return nil }
+                let seen = (entry["seen"] as? NSNumber)?.intValue ?? 0
+                let blocked = (entry["blocked"] as? NSNumber)?.intValue ?? 0
+                return (host, seen, blocked)
+            }.sorted { $0.host < $1.host }
+
+            if ordered.isEmpty {
+                addHeader("No requests yet")
+            } else {
+                addHeader("\(ordered.count) hosts on this page")
+                for item in ordered.prefix(80) {
+                    let ruled = CustomRules.contains(item.host)
+                    let detail = item.blocked > 0
+                        ? "\(item.seen) requests · \(item.blocked) blocked"
+                        : "\(item.seen) requests"
+                    let name = item.host
+                    addRow(title: name, subtitle: detail, icon: nil,
+                           closable: false, blocked: ruled,
+                           activate: {},
+                           mute: { [weak self] in self?.onToggleBlock?(name) })
+                }
+            }
+
+            if !CustomRules.hosts.isEmpty {
+                addHeader("Always blocked")
+                for host in CustomRules.hosts {
+                    addRow(title: host, subtitle: "custom rule", icon: nil,
+                           closable: false, blocked: true,
+                           activate: {},
+                           mute: { [weak self] in self?.onToggleBlock?(host) })
                 }
             }
 

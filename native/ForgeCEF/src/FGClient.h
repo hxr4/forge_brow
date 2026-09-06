@@ -1,10 +1,13 @@
 #ifndef FG_CLIENT_H
 #define FG_CLIENT_H
 
+#import <Foundation/Foundation.h>
+
 #include <atomic>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "include/cef_client.h"
 #include "include/cef_devtools_message_observer.h"
@@ -29,6 +32,9 @@ class FGClient : public CefClient,
   void Detach();
   void Evaluate(const std::string& expression, void (^completion)(id));
   void AddDocumentStartScript(const std::string& source);
+  void NoteRequest(const std::string& url, const char* type, bool blocked);
+  NSArray<NSDictionary<NSString *, id> *>* CopyRequests() const;
+  void ResetRequestStats();
   void SetIgnoreCertificateErrors(bool value);
   bool ignore_certificate_errors() const;
   uint64_t blocked_count() const;
@@ -137,6 +143,13 @@ class FGClient : public CefClient,
 
   std::string page_url_;
   mutable std::mutex page_url_lock_;
+
+  struct HostStats {
+    uint64_t seen = 0;
+    uint64_t blocked = 0;
+  };
+  std::map<std::string, HostStats> hosts_;
+  mutable std::mutex requests_lock_;
 
   std::atomic<bool> ignore_certificate_errors_{false};
   std::atomic<uint64_t> blocked_count_{0};

@@ -149,6 +149,13 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
   _cosmeticSelectorCount = count;
 }
 
+- (NSArray<NSDictionary<NSString *, id> *> *)recentRequests {
+  if (!_client) {
+    return @[];
+  }
+  return _client->CopyRequests();
+}
+
 - (NSDictionary<NSString *, id> *)mediaProperties {
   return _mediaProperties ?: @{};
 }
