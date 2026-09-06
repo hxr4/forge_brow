@@ -15,6 +15,24 @@ enum StatsProbe {
     """
 }
 
+enum StatsFormat {
+    static func bytes(_ value: Double) -> String {
+        guard value > 0 else { return "—" }
+        let units = ["B", "KB", "MB", "GB"]
+        var amount = value
+        var index = 0
+        while amount >= 1024, index < units.count - 1 {
+            amount /= 1024
+            index += 1
+        }
+        return String(format: amount >= 100 || index == 0 ? "%.0f %@" : "%.1f %@", amount, units[index])
+    }
+
+    static func millis(_ value: Double) -> String {
+        guard value > 0 else { return "—" }
+        return value >= 1000 ? String(format: "%.2f s", value / 1000) : String(format: "%.0f ms", value)
+    }
+}
 
 final class SpectrumView: NSView {
     private var levels: [Double] = []
@@ -38,11 +56,11 @@ final class SpectrumView: NSView {
         for (index, level) in levels.enumerated() {
             let x = CGFloat(index) * (width + gap)
             let height = max(1, bounds.height * CGFloat(level))
-            let bar = NSRect(x: x, y: 0, width: width, height: height)
             let ratio = CGFloat(index) / max(1, count - 1)
             let color = Theme.moss.blended(withFraction: ratio * 0.85, of: Theme.acid) ?? Theme.moss
             color.withAlphaComponent(0.92).setFill()
-            NSBezierPath(roundedRect: bar, xRadius: width / 2, yRadius: width / 2).fill()
+            NSBezierPath(roundedRect: NSRect(x: x, y: 0, width: width, height: height),
+                         xRadius: width / 2, yRadius: width / 2).fill()
 
             let peak = bounds.height * CGFloat(peaks[index])
             if peak > height + 1 {
@@ -53,115 +71,55 @@ final class SpectrumView: NSView {
     }
 }
 
-final class StatsOverlayView: NSView {
+final class StatsContentView: NSView {
 
-    private let titleLabel = NSTextField(labelWithString: "STATS FOR NERDS")
-    private let hintLabel = NSTextField(labelWithString: "⌥⌘S")
-    private var rowKeys: [NSTextField] = []
-    private var rowValues: [NSTextField] = []
-    private var rows: [(String, String)] = []
+    static let rowHeight: CGFloat = 17
+    static let headerHeight: CGFloat = 25
+    static let padding: CGFloat = 13
+    static let spectrumHeight: CGFloat = 36
 
-    private let audioTitle = NSTextField(labelWithString: "AUDIO PATH")
-    private let divider = NSView()
+    private var sections: [(String, [(String, String)])] = []
+    private var spectrumValues: [Double] = []
+
+    private var titles: [NSTextField] = []
+    private var keys: [NSTextField] = []
+    private var values: [NSTextField] = []
+    private var rules: [NSView] = []
     private let spectrum = SpectrumView()
-    private var audioKeys: [NSTextField] = []
-    private var audioValues: [NSTextField] = []
-    private var audioRows: [(String, String)] = []
-    private var audioVisible = false
+
+    override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(rgb: 0x050604, alpha: 0.94).cgColor
-        layer?.cornerRadius = 12
-        layer?.borderWidth = 1
-        layer?.borderColor = Theme.line2.cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.6
-        layer?.shadowRadius = 24
-        layer?.shadowOffset = NSSize(width: 0, height: -8)
-
-        titleLabel.font = .systemFont(ofSize: 10, weight: .heavy)
-        titleLabel.textColor = Theme.acid
-        addSubview(titleLabel)
-
-        hintLabel.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
-        hintLabel.textColor = Theme.mossDeep
-        hintLabel.alignment = .right
-        addSubview(hintLabel)
-
-        audioTitle.font = .systemFont(ofSize: 10, weight: .heavy)
-        audioTitle.textColor = Theme.moss
-        audioTitle.isHidden = true
-        addSubview(audioTitle)
-
-        divider.wantsLayer = true
-        divider.layer?.backgroundColor = Theme.line.cgColor
-        divider.isHidden = true
-        addSubview(divider)
-
         spectrum.isHidden = true
         addSubview(spectrum)
-
-        isHidden = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private static let spectrumHeight: CGFloat = 34
+    private func title(at index: Int) -> NSTextField {
+        while titles.count <= index {
+            let label = NSTextField(labelWithString: "")
+            label.font = .systemFont(ofSize: 10, weight: .heavy)
+            addSubview(label)
+            titles.append(label)
 
-    func applyAudio(_ entries: [(String, String)], spectrum values: [Double]) {
-        audioRows = entries
-        audioVisible = !entries.isEmpty
-
-        audioTitle.isHidden = !audioVisible
-        divider.isHidden = !audioVisible
-        spectrum.isHidden = !audioVisible
-        spectrum.apply(values)
-
-        while audioKeys.count < entries.count {
-            let key = NSTextField(labelWithString: "")
-            key.font = .systemFont(ofSize: 11)
-            key.textColor = Theme.muted
-            addSubview(key)
-            audioKeys.append(key)
-
-            let value = NSTextField(labelWithString: "")
-            value.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            value.textColor = Theme.cream
-            value.alignment = .right
-            value.lineBreakMode = .byTruncatingMiddle
-            addSubview(value)
-            audioValues.append(value)
+            let rule = NSView()
+            rule.wantsLayer = true
+            rule.layer?.backgroundColor = Theme.line.cgColor
+            addSubview(rule)
+            rules.append(rule)
         }
-
-        for (index, key) in audioKeys.enumerated() {
-            let visible = index < entries.count
-            key.isHidden = !visible
-            audioValues[index].isHidden = !visible
-            guard visible else { continue }
-            if key.stringValue != entries[index].0 { key.stringValue = entries[index].0 }
-            if audioValues[index].stringValue != entries[index].1 {
-                audioValues[index].stringValue = entries[index].1
-            }
-        }
-
-        needsLayout = true
+        return titles[index]
     }
 
-    private static let rowHeight: CGFloat = 17
-    private static let headerHeight: CGFloat = 30
-    private static let padding: CGFloat = 13
-
-    func apply(_ entries: [(String, String)]) {
-        rows = entries
-
-        while rowKeys.count < entries.count {
+    private func row(at index: Int) -> (NSTextField, NSTextField) {
+        while keys.count <= index {
             let key = NSTextField(labelWithString: "")
             key.font = .systemFont(ofSize: 11)
             key.textColor = Theme.muted
             addSubview(key)
-            rowKeys.append(key)
+            keys.append(key)
 
             let value = NSTextField(labelWithString: "")
             value.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
@@ -169,80 +127,138 @@ final class StatsOverlayView: NSView {
             value.alignment = .right
             value.lineBreakMode = .byTruncatingMiddle
             addSubview(value)
-            rowValues.append(value)
+            values.append(value)
+        }
+        return (keys[index], values[index])
+    }
+
+    var contentHeight: CGFloat {
+        var height = Self.padding
+        for (index, section) in sections.enumerated() {
+            height += index == 0 ? Self.headerHeight : Self.headerHeight + 8
+            height += CGFloat(section.1.count) * Self.rowHeight
+        }
+        if !spectrumValues.isEmpty { height += Self.spectrumHeight + 10 }
+        return height + Self.padding
+    }
+
+    func apply(sections newSections: [(String, [(String, String)])], spectrum newSpectrum: [Double]) {
+        sections = newSections
+        spectrumValues = newSpectrum
+        spectrum.isHidden = newSpectrum.isEmpty
+        spectrum.apply(newSpectrum)
+
+        var rowIndex = 0
+        for (sectionIndex, section) in sections.enumerated() {
+            let header = title(at: sectionIndex)
+            header.stringValue = section.0
+            header.textColor = sectionIndex == 0 ? Theme.acid : Theme.moss
+            header.isHidden = false
+            rules[sectionIndex].isHidden = sectionIndex == 0
+
+            for entry in section.1 {
+                let (key, value) = row(at: rowIndex)
+                key.isHidden = false
+                value.isHidden = false
+                if key.stringValue != entry.0 { key.stringValue = entry.0 }
+                if value.stringValue != entry.1 { value.stringValue = entry.1 }
+                rowIndex += 1
+            }
         }
 
-        for (index, key) in rowKeys.enumerated() {
-            let visible = index < entries.count
-            key.isHidden = !visible
-            rowValues[index].isHidden = !visible
-            guard visible else { continue }
-            if key.stringValue != entries[index].0 { key.stringValue = entries[index].0 }
-            if rowValues[index].stringValue != entries[index].1 {
-                rowValues[index].stringValue = entries[index].1
-            }
+        for index in sections.count..<titles.count {
+            titles[index].isHidden = true
+            rules[index].isHidden = true
+        }
+        for index in rowIndex..<keys.count {
+            keys[index].isHidden = true
+            values[index].isHidden = true
         }
 
         needsLayout = true
     }
 
-    var preferredHeight: CGFloat {
-        var height = Self.headerHeight + CGFloat(rows.count) * Self.rowHeight + Self.padding
-        if audioVisible {
-            height += 14 + 18 + CGFloat(audioRows.count) * Self.rowHeight + Self.spectrumHeight + 10
+    override func layout() {
+        super.layout()
+        let pad = Self.padding
+        let width = bounds.width - pad * 2
+        var y = pad
+        var rowIndex = 0
+
+        for (sectionIndex, section) in sections.enumerated() {
+            if sectionIndex > 0 {
+                y += 8
+                rules[sectionIndex].frame = NSRect(x: pad, y: y - 5, width: width, height: 1)
+            }
+            titles[sectionIndex].frame = NSRect(x: pad, y: y, width: width, height: 13)
+            y += Self.headerHeight
+
+            for _ in section.1 {
+                keys[rowIndex].frame = NSRect(x: pad, y: y, width: width * 0.5, height: 14)
+                values[rowIndex].frame = NSRect(x: pad + width * 0.40, y: y,
+                                                width: width * 0.60, height: 14)
+                y += Self.rowHeight
+                rowIndex += 1
+            }
         }
-        return height
+
+        if !spectrumValues.isEmpty {
+            y += 8
+            spectrum.frame = NSRect(x: pad, y: y, width: width, height: Self.spectrumHeight)
+        }
+    }
+}
+
+final class StatsOverlayView: NSView {
+
+    private let scroll = NSScrollView()
+    private let content = StatsContentView()
+    private let hint = NSTextField(labelWithString: "⌥⌘S")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(rgb: 0x050604, alpha: 0.95).cgColor
+        layer?.cornerRadius = 12
+        layer?.borderWidth = 1
+        layer?.borderColor = Theme.line2.cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.6
+        layer?.shadowRadius = 26
+        layer?.shadowOffset = NSSize(width: 0, height: -8)
+
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.borderType = .noBorder
+        scroll.documentView = content
+        addSubview(scroll)
+
+        hint.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
+        hint.textColor = Theme.mossDeep
+        hint.alignment = .right
+        addSubview(hint)
+
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    var contentHeight: CGFloat { content.contentHeight }
+
+    func apply(sections: [(String, [(String, String)])], spectrum values: [Double]) {
+        content.apply(sections: sections, spectrum: values)
+        let width = max(1, bounds.width - 2)
+        content.frame = NSRect(x: 0, y: 0, width: width, height: content.contentHeight)
+        needsLayout = true
     }
 
     override func layout() {
         super.layout()
-        let pad = Self.padding
-        titleLabel.frame = NSRect(x: pad, y: bounds.height - 22, width: 160, height: 13)
-        hintLabel.frame = NSRect(x: bounds.width - pad - 60, y: bounds.height - 22, width: 60, height: 13)
-
-        var y = bounds.height - Self.headerHeight
-        let width = bounds.width - pad * 2
-        for index in 0..<rows.count {
-            y -= Self.rowHeight
-            rowKeys[index].frame = NSRect(x: pad, y: y, width: width * 0.5, height: 14)
-            rowValues[index].frame = NSRect(x: pad + width * 0.42, y: y,
-                                            width: width * 0.58, height: 14)
-        }
-
-        guard audioVisible else { return }
-
-        y -= 12
-        divider.frame = NSRect(x: pad, y: y, width: width, height: 1)
-        y -= 17
-        audioTitle.frame = NSRect(x: pad, y: y, width: 160, height: 13)
-
-        for index in 0..<audioRows.count {
-            y -= Self.rowHeight
-            audioKeys[index].frame = NSRect(x: pad, y: y, width: width * 0.5, height: 14)
-            audioValues[index].frame = NSRect(x: pad + width * 0.42, y: y,
-                                              width: width * 0.58, height: 14)
-        }
-
-        y -= Self.spectrumHeight + 8
-        spectrum.frame = NSRect(x: pad, y: y, width: width, height: Self.spectrumHeight)
-    }
-}
-
-enum StatsFormat {
-    static func bytes(_ value: Double) -> String {
-        guard value > 0 else { return "—" }
-        let units = ["B", "KB", "MB", "GB"]
-        var amount = value
-        var index = 0
-        while amount >= 1024, index < units.count - 1 {
-            amount /= 1024
-            index += 1
-        }
-        return String(format: amount >= 100 || index == 0 ? "%.0f %@" : "%.1f %@", amount, units[index])
-    }
-
-    static func millis(_ value: Double) -> String {
-        guard value > 0 else { return "—" }
-        return value >= 1000 ? String(format: "%.2f s", value / 1000) : String(format: "%.0f ms", value)
+        scroll.frame = bounds.insetBy(dx: 1, dy: 1)
+        content.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width,
+                               height: max(content.contentHeight, scroll.contentSize.height))
+        hint.frame = NSRect(x: bounds.width - 52, y: bounds.height - 22, width: 40, height: 13)
     }
 }

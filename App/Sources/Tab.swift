@@ -26,6 +26,11 @@ final class Tab {
     var favicon: NSImage?
     var media: NowPlaying?
     var groupID: UUID?
+
+    var isMuted: Bool {
+        get { browserView.isAudioMuted }
+        set { browserView.setAudioMuted(newValue) }
+    }
     var isLoading = false
     var canGoBack = false
     var canGoForward = false
@@ -49,12 +54,16 @@ final class Tab {
         return "New Tab"
     }
 
-    init(url: String) {
+    let isPrivate: Bool
+
+    init(url: String, isPrivate: Bool = false) {
         self.url = url
         self.title = ""
+        self.isPrivate = isPrivate
         self.favicon = FaviconStore.shared.icon(for: url)
         self.browserView = FGBrowserView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800),
-                                         initialURL: url)
+                                         initialURL: url,
+                                         privateBrowsing: isPrivate)
         self.browserView.translatesAutoresizingMaskIntoConstraints = false
     }
 }

@@ -45,10 +45,31 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return .terminateCancel
     }
 
+    @objc func ensureWindow() {
+        if windowControllers.isEmpty {
+            openNewWindow()
+        }
+    }
+
     @objc func openNewWindow() {
         let controller = BrowserWindowController()
         controller.showWindow(nil)
         windowControllers.append(controller)
+    }
+
+    @objc func openPrivateWindow() {
+        let controller = BrowserWindowController(isPrivate: true)
+        controller.showWindow(nil)
+        windowControllers.append(controller)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func presentPrivateWindow(with url: String) {
+        let controller = BrowserWindowController(isPrivate: true)
+        controller.showWindow(nil)
+        windowControllers.append(controller)
+        controller.newTab(url: url)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var activeController: BrowserWindowController? {
@@ -140,6 +161,7 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let file = NSMenu(title: "File")
         file.addItem(browserItem("New Tab", "handleNewTab", "t"))
         file.addItem(item("New Window", #selector(openNewWindow), "n"))
+        file.addItem(item("New Private Window", #selector(openPrivateWindow), "n", [.command, .shift]))
         file.addItem(.separator())
         file.addItem(browserItem("Open Location…", "handleFocusAddress", "l"))
         file.addItem(.separator())
@@ -180,6 +202,7 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         view.addItem(browserItem("Zoom In", "handleZoomIn", "+"))
         view.addItem(browserItem("Zoom Out", "handleZoomOut", "-"))
         view.addItem(.separator())
+        view.addItem(browserItem("Toggle Sidebar", "handleToggleSidebar", "s", [.command, .control]))
         view.addItem(browserItem("Enter Full Screen", "handleToggleFullScreen", "f", [.command, .control]))
         view.addItem(.separator())
         let devMenu = NSMenu(title: "Developer")
@@ -277,6 +300,14 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(browserItem("Show Previous Tab", "handlePreviousTab", "\t", [.control, .shift]))
             menu.addItem(.separator())
             menu.addItem(browserItem("New Group with This Tab", "handleNewTabGroup", "g", [.command, .shift]))
+            menu.addItem(.separator())
+            menu.addItem(browserItem("Duplicate Tab", "handleDuplicateTab"))
+            menu.addItem(browserItem("Mute Tab", "handleToggleMuteTab"))
+            menu.addItem(.separator())
+            menu.addItem(browserItem("Close Other Tabs", "handleCloseOtherTabs"))
+            menu.addItem(browserItem("Close Tabs to the Left", "handleCloseTabsToTheLeft"))
+            menu.addItem(browserItem("Close Tabs to the Right", "handleCloseTabsToTheRight"))
+            menu.addItem(.separator())
 
             let controller = activeController
             let groups = controller?.tabGroups ?? []

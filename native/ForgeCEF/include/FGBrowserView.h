@@ -37,10 +37,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL canGoForward;
 @property (nonatomic, readonly) NSUInteger blockedCountForTab;
 @property (nonatomic, readonly) NSUInteger cosmeticSelectorCount;
+@property (nonatomic, readonly) NSDictionary<NSString *, id> *mediaProperties;
 
 @property (nonatomic, assign) FGBypassOptions bypassOptions;
 
 - (instancetype)initWithFrame:(NSRect)frame initialURL:(NSString *)url;
+- (instancetype)initWithFrame:(NSRect)frame
+                   initialURL:(NSString *)url
+              privateBrowsing:(BOOL)privateBrowsing;
+@property (nonatomic, readonly) BOOL privateBrowsing;
 
 - (void)loadURL:(NSString *)url;
 - (void)goBack;
@@ -63,6 +68,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)editPaste;
 - (void)editSelectAll;
 - (void)printPage;
+- (void)setAudioMuted:(BOOL)muted;
+@property (nonatomic, readonly) BOOL isAudioMuted;
 - (void)closeBrowser;
 - (void)executeJavaScript:(NSString *)script;
 - (void)evaluate:(NSString *)expression completion:(void (^)(id _Nullable result))completion;

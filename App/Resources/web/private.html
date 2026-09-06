@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incognito</title>
+<style>
+:root{
+  --void:#000;
+  --line:rgba(255,255,255,.07);
+  --line-hi:rgba(255,255,255,.14);
+  --gold:#C9C48A;
+  --acid:#CFE85C;
+  --cream:#F2F0E4;
+  --bone:#A9AB98;
+  --muted:#63665A;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:#000;color:var(--cream);overflow:hidden;
+  font:400 14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit;background:none;border:0;outline:none}
+
+.bg{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.vignette{position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 34%,rgba(180,175,120,.09),transparent 52%),
+             radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(0,0,0,.92) 100%)}
+.planet{position:absolute;right:-190px;bottom:-260px;width:620px;height:620px;border-radius:50%;
+  background:radial-gradient(circle at 28% 26%,rgba(226,222,180,.14),rgba(120,116,80,.05) 42%,transparent 62%);
+  border:1px solid rgba(226,222,180,.09)}
+.streak{position:absolute;left:-160px;bottom:-40px;width:640px;height:420px;
+  border-radius:50%;border:1px solid rgba(226,222,180,.07);transform:rotate(-16deg)}
+.streak.b{left:-230px;bottom:-120px;width:760px;height:520px;border-color:rgba(226,222,180,.045)}
+
+.corner{position:fixed;font-size:9.5px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase}
+.corner.tr{right:26px;top:20px}
+
+.wrap{position:relative;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:26px 34px}
+
+.mark{position:fixed;left:34px;top:24px;display:flex;align-items:baseline;gap:1px}
+.mark .g{font-family:Georgia,"Times New Roman",serif;font-size:28px;font-weight:700;letter-spacing:-.02em;
+  background:linear-gradient(160deg,#f6f4e8,#a9a878 40%,#5d5c3c 62%,#e8e6d2);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.mark .o{position:relative;width:21px;height:21px;transform:translateY(2px)}
+.mark .r{font-size:8px;color:var(--muted);transform:translateY(-15px)}
+
+.aside{position:fixed;left:34px;top:calc(50% - 60px);max-width:120px}
+.aside p{font-size:10px;letter-spacing:.3em;line-height:2.2;color:var(--bone);text-transform:uppercase}
+.aside .rule{margin-top:22px;width:66px;height:1px;background:var(--line-hi)}
+
+.aside.right{left:auto;right:34px;text-align:left}
+.aside.right .rule{margin-bottom:20px;margin-top:0}
+
+.cat{width:430px;max-width:52vw;margin-bottom:-6px;position:relative}
+.cat svg{width:100%;overflow:visible}
+.spark{position:absolute;color:#f2f0e4;opacity:.55;font-size:15px;animation:tw 3.6s ease-in-out infinite}
+.spark.a{left:6%;top:26%}
+.spark.b{right:8%;top:14%;font-size:11px;animation-delay:1.3s}
+.spark.c{right:2%;top:46%;font-size:19px;animation-delay:2.4s}
+@keyframes tw{0%,100%{opacity:.12;transform:scale(.85)}50%{opacity:.8;transform:scale(1.1)}}
+
+h1{font-size:38px;font-weight:300;letter-spacing:.44em;margin-top:16px;
+  text-indent:.44em;color:#F4F2E6;text-shadow:0 0 40px rgba(226,222,180,.22)}
+.sub{margin-top:8px;font-size:10px;letter-spacing:.42em;color:var(--muted);text-transform:uppercase}
+
+.search{display:flex;align-items:center;gap:14px;width:640px;max-width:74vw;margin-top:30px;
+  padding:16px 24px;border-radius:999px;border:1px solid rgba(201,196,138,.34);
+  background:rgba(255,255,255,.018);box-shadow:0 0 46px rgba(201,196,138,.10);
+  transition:all .4s var(--ease)}
+.search:focus-within{border-color:rgba(201,196,138,.6);box-shadow:0 0 62px rgba(201,196,138,.2)}
+.search svg{width:18px;height:18px;color:var(--gold);flex:none}
+.search input{flex:1;font-size:14px}
+.search input::placeholder{color:var(--muted)}
+
+.tiles{display:flex;gap:16px;margin-top:30px;flex-wrap:wrap;justify-content:center}
+.tile{width:80px;display:flex;flex-direction:column;align-items:center;gap:9px}
+.tile .box{width:60px;height:60px;border-radius:14px;border:1px solid var(--line);
+  background:rgba(255,255,255,.055);display:flex;align-items:center;justify-content:center;
+  transition:transform .28s var(--ease),border-color .28s var(--ease),box-shadow .28s var(--ease),background .28s var(--ease)}
+.tile:hover .box{transform:translateY(-5px);border-color:rgba(201,196,138,.4);
+  background:rgba(255,255,255,.095);box-shadow:0 12px 30px rgba(0,0,0,.6),0 0 26px rgba(201,196,138,.16)}
+.tile img{width:28px;height:28px;border-radius:6px;filter:drop-shadow(0 0 1px rgba(255,255,255,.4))}
+.tile .mono{font-size:17px;font-weight:600;color:var(--bone)}
+.tile span{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:80px;text-align:center;text-decoration:none}
+.tile:hover span{color:var(--bone)}
+.tile.add .box{border-style:dashed}
+
+.quote{margin-top:26px;text-align:center}
+.quote p{font-size:9.5px;letter-spacing:.34em;color:var(--muted);line-height:2;text-transform:uppercase}
+.quote .rule{margin:14px auto 0;width:54px;height:1px;background:var(--line)}
+
+.note{position:fixed;bottom:24px;display:flex;align-items:flex-start;gap:12px;
+  padding:14px 17px;border-radius:13px;border:1px solid var(--line);
+  background:rgba(255,255,255,.026);max-width:310px}
+.note.l{left:26px}
+.note.r{right:26px}
+.note svg{width:17px;height:17px;color:var(--bone);flex:none;margin-top:1px}
+.note b{display:block;font-size:12px;font-weight:500}
+.note span{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5}
+
+.rise{opacity:0;transform:translateY(14px);animation:rise .9s var(--ease) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+@media (max-height:820px){
+  .cat{width:330px}
+  h1{font-size:30px;margin-top:10px}
+  .search{margin-top:20px;padding:13px 20px}
+  .tiles{margin-top:20px}
+  .quote{margin-top:16px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="vignette"></div>
+  <div class="planet"></div>
+  <div class="streak"></div>
+  <div class="streak b"></div>
+</div>
+
+<div class="mark rise">
+  <span class="g">F</span>
+  <span class="o">
+    <svg viewBox="0 0 21 21" fill="none">
+      <circle cx="10.5" cy="10.5" r="9" stroke="#b9b88a" stroke-width="2.6"/>
+      <path d="M6 8c0-2 1.6-3.2 4.5-3.2S15 6 15 8c0 2.6-2 4.4-4.5 4.4S6 10.6 6 8z" fill="#050505"/>
+      <path d="M6 8L5.2 5l2.6 1.1M15 8l.8-3-2.6 1.1" stroke="#b9b88a" stroke-width=".8" fill="#050505"/>
+      <circle cx="8.8" cy="8.4" r="1" fill="#CFE85C"/><circle cx="12.2" cy="8.4" r="1" fill="#CFE85C"/>
+    </svg>
+  </span>
+  <span class="g">rge</span>
+  <span class="r">&#174;</span>
+</div>
+
+<div class="corner tr">Private by design</div>
+
+<div class="aside rise" style="animation-delay:.1s">
+  <p>Same<br>internet.<br>A quieter<br>you.</p>
+  <div class="rule"></div>
+</div>
+
+<div class="aside right rise" style="animation-delay:.14s">
+  <div class="rule"></div>
+  <p>No trackers.<br>No history.<br>Just you.</p>
+</div>
+
+<div class="wrap">
+  <div class="cat rise" style="animation-delay:.05s">
+    <span class="spark a">&#10022;</span>
+    <span class="spark b">&#10022;</span>
+    <span class="spark c">&#10022;</span>
+    <svg viewBox="0 0 430 290" fill="none">
+      <defs>
+        <radialGradient id="fur" cx="50%" cy="38%" r="66%">
+          <stop offset="0" stop-color="#20201a"/>
+          <stop offset="55%" stop-color="#0b0b09"/>
+          <stop offset="100%" stop-color="#040403"/>
+        </radialGradient>
+        <linearGradient id="rim" x1="0" y1="0" x2="430" y2="290">
+          <stop offset="0" stop-color="#cfcb96" stop-opacity=".55"/>
+          <stop offset=".5" stop-color="#8c8a63" stop-opacity=".18"/>
+          <stop offset="1" stop-color="#cfcb96" stop-opacity=".4"/>
+        </linearGradient>
+        <radialGradient id="eye" cx="50%" cy="42%" r="60%">
+          <stop offset="0" stop-color="#e8f7a6"/>
+          <stop offset="60%" stop-color="#9dc94f"/>
+          <stop offset="100%" stop-color="#4d6a22"/>
+        </radialGradient>
+      </defs>
+
+      <path d="M96 168c-6-40-2-78 14-104l52 34c34-10 62-10 96 0l52-34c16 26 20 64 14 104-8 52-52 92-114 92S104 220 96 168z"
+            fill="url(#fur)" stroke="url(#rim)" stroke-width="1.3"/>
+      <path d="M110 64l52 34c-8 4-16 9-23 15L110 64z" fill="#111109" stroke="url(#rim)" stroke-width="1"/>
+      <path d="M320 64l-52 34c8 4 16 9 23 15L320 64z" fill="#111109" stroke="url(#rim)" stroke-width="1"/>
+
+      <g stroke="#b8b487" stroke-width="1" stroke-linecap="round" opacity=".75">
+        <path d="M92 176L6 152M92 190L10 186M96 204L18 220"/>
+        <path d="M338 176l86-24M338 190l82-4M334 204l78 16"/>
+      </g>
+
+      <ellipse class="eyeL" cx="168" cy="150" rx="30" ry="24" fill="url(#eye)"/>
+      <ellipse class="eyeR" cx="262" cy="150" rx="30" ry="24" fill="url(#eye)"/>
+      <ellipse cx="168" cy="150" rx="6" ry="20" fill="#0a0f04"/>
+      <ellipse cx="262" cy="150" rx="6" ry="20" fill="#0a0f04"/>
+      <ellipse cx="159" cy="141" rx="5" ry="4" fill="#f4ffd0" opacity=".85"/>
+      <ellipse cx="253" cy="141" rx="5" ry="4" fill="#f4ffd0" opacity=".85"/>
+
+      <path d="M215 178l-17 15h34l-17-15z" fill="#efeddc"/>
+      <path d="M198 193q17 16 34 0" stroke="#b8b487" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <path d="M215 193v14" stroke="#a8a478" stroke-width="1" stroke-linecap="round"/>
+      <path d="M186 207q29 22 58 0" stroke="#a8a478" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <h1 class="rise" style="animation-delay:.14s">INCOGNITO</h1>
+  <div class="sub rise" style="animation-delay:.18s">Explore freely</div>
+
+  <form class="search rise" id="search" style="animation-delay:.22s">
+    <svg viewBox="0 0 18 18" fill="none"><circle cx="7.8" cy="7.8" r="5.8" stroke="currentColor"
+      stroke-width="1.5"/><path d="M12.4 12.4L16.5 16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <input id="q" placeholder="Search privately..." autocomplete="off" spellcheck="false" autofocus>
+    <button type="submit" aria-label="Go">
+      <svg viewBox="0 0 20 20" width="20" height="20" fill="none" style="color:var(--gold)">
+        <path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </form>
+
+  <div class="tiles rise" id="tiles" style="animation-delay:.28s"></div>
+
+  <div class="quote rise" style="animation-delay:.34s">
+    <p>&ldquo;Curiosity<br>leads to progress.&rdquo;</p>
+    <div class="rule"></div>
+  </div>
+</div>
+
+<div class="note l rise" style="animation-delay:.4s">
+  <svg viewBox="0 0 17 17" fill="none"><path d="M8.5 1.5l6 2.4v4.3c0 3.6-2.5 6.3-6 7.3-3.5-1-6-3.7-6-7.3V3.9l6-2.4z"
+    stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+  <div><b>Your activity stays on this device</b><span>No history. No cookies. No tracking.</span></div>
+</div>
+
+<div class="note r rise" style="animation-delay:.44s">
+  <svg viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="8.5" r="7" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M1.5 8.5h14M8.5 1.5c3.6 3.8 3.6 10.2 0 14-3.6-3.8-3.6-10.2 0-14z" stroke="currentColor" stroke-width="1.2"/></svg>
+  <div><b>This won't hide your activity</b><span>from websites you visit, your employer, or your ISP.</span></div>
+</div>
+
+<script>
+const post = (action, payload) => fetch('/api/command', {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({action, payload: payload||{}})
+}).catch(()=>{});
+
+const LINKS = [
+  {title:'YouTube', url:'https://youtube.com'},
+  {title:'Reddit', url:'https://reddit.com'},
+  {title:'GitHub', url:'https://github.com'},
+  {title:'Stack Overflow', url:'https://stackoverflow.com'},
+  {title:'DuckDuckGo', url:'https://duckduckgo.com'},
+  {title:'Notion', url:'https://notion.so'},
+  {title:'X', url:'https://x.com'}
+];
+
+const host = document.getElementById('tiles');
+LINKS.forEach(link => {
+  const tile = document.createElement('a');
+  tile.className = 'tile';
+  tile.href = link.url;
+  const box = document.createElement('span');
+  box.className = 'box';
+  const img = document.createElement('img');
+  const mono = document.createElement('span');
+  mono.className = 'mono';
+  mono.textContent = link.title.charAt(0);
+  img.onerror = () => { img.remove(); box.appendChild(mono); };
+  try { img.src = new URL('/favicon.ico', link.url).href; } catch(e){ box.appendChild(mono); }
+  box.appendChild(img);
+  const label = document.createElement('span');
+  label.textContent = link.title;
+  tile.append(box, label);
+  tile.onclick = e => { e.preventDefault(); post('navigate',{url:link.url}); };
+  host.appendChild(tile);
+});
+
+const add = document.createElement('button');
+add.className = 'tile add';
+add.innerHTML = '<span class="box"><svg viewBox="0 0 16 16" width="16" height="16" fill="none">'
+  + '<path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>'
+  + '<span>Add</span>';
+add.onclick = () => document.getElementById('q').focus();
+host.appendChild(add);
+
+document.getElementById('search').onsubmit = e => {
+  e.preventDefault();
+  const value = document.getElementById('q').value.trim();
+  if(!value) return;
+  post('navigate',{url:value});
+  document.getElementById('q').value = '';
+};
+
+function blink(){
+  const eyes = document.querySelectorAll('.eyeL,.eyeR');
+  eyes.forEach(e => { e.style.transition='transform .11s ease'; e.style.transformOrigin='center';
+    e.style.transform='scaleY(.08)'; });
+  setTimeout(()=>eyes.forEach(e=>e.style.transform='none'), 120);
+  setTimeout(blink, 3600 + Math.random()*4600);
+}
+setTimeout(blink, 2600);
+</script>
+</body>
+</html>

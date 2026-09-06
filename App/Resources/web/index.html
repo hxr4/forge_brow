@@ -147,7 +147,8 @@ input{font:inherit;color:inherit;background:none;border:0;outline:none}
 .expand:hover{color:var(--acid);transform:translate(2px,-2px)}
 
 .trays{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:18px}
-.tray{padding:15px 15px 16px}
+.tray{padding:15px 15px 16px;overflow:visible;z-index:1}
+.tray:hover{z-index:5}
 .trayhead{display:flex;align-items:center;gap:9px;margin-bottom:16px}
 .trayhead .ic{width:15px;height:15px;color:var(--bone);flex:none}
 .trayhead h3{font-size:13px;font-weight:500;letter-spacing:.01em;color:var(--cream)}
@@ -158,17 +159,20 @@ input{font:inherit;color:inherit;background:none;border:0;outline:none}
 
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
 .tile{
-  position:relative;aspect-ratio:1;border-radius:13px;background:rgba(255,255,255,.028);
-  border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+  position:relative;aspect-ratio:1;border-radius:13px;
+  background:linear-gradient(160deg,rgba(255,255,255,.085),rgba(255,255,255,.035));
+  border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;
   transition:transform .28s var(--ease),border-color .28s var(--ease),background .28s var(--ease),box-shadow .28s var(--ease);
   opacity:0;animation:pop .42s var(--ease) forwards;
 }
 @keyframes pop{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:none}}
-.tile:hover{transform:translateY(-4px);border-color:var(--line-hi);background:rgba(255,255,255,.06);
-  box-shadow:0 10px 28px rgba(0,0,0,.55),0 0 22px rgba(150,150,90,.16)}
+.tile:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.22);
+  background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.07));
+  box-shadow:0 10px 28px rgba(0,0,0,.55),0 0 24px rgba(150,150,90,.2)}
 .tile:active{transform:translateY(-1px) scale(.97)}
-.tile img{width:26px;height:26px;border-radius:6px;pointer-events:none}
-.tile .mono{font-size:14px;font-weight:600;color:var(--bone)}
+.tile img{width:29px;height:29px;border-radius:6px;pointer-events:none;
+  filter:drop-shadow(0 0 1px rgba(255,255,255,.55)) drop-shadow(0 1px 3px rgba(0,0,0,.6))}
+.tile .mono{font-size:15px;font-weight:700;color:var(--cream);opacity:.82}
 .tile .kill{
   position:absolute;top:-6px;right:-6px;width:17px;height:17px;border-radius:50%;
   background:#1a1a14;border:1px solid var(--line-hi);color:var(--muted);font-size:10px;
@@ -183,7 +187,8 @@ input{font:inherit;color:inherit;background:none;border:0;outline:none}
 .tip{
   position:absolute;bottom:-25px;left:50%;transform:translateX(-50%) translateY(4px);
   font-size:10.5px;color:var(--bone);white-space:nowrap;opacity:0;pointer-events:none;
-  transition:opacity .2s var(--ease),transform .2s var(--ease);z-index:4;
+  transition:opacity .2s var(--ease),transform .2s var(--ease);z-index:9;
+  background:rgba(8,9,7,.94);padding:3px 8px;border-radius:7px;border:1px solid var(--line);
 }
 .tile:hover .tip{opacity:1;transform:translateX(-50%)}
 
@@ -216,7 +221,11 @@ input{font:inherit;color:inherit;background:none;border:0;outline:none}
 .credo{text-align:right;font-size:10px;letter-spacing:.28em;color:var(--muted);line-height:1.9;
   text-transform:uppercase}
 
-.servers{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px;min-height:0}
+.servers{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;
+  margin-top:12px;min-height:0}
+.srvtoggle{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  padding:5px 10px;border-radius:999px;border:1px dashed var(--line-hi);transition:all .25s var(--ease)}
+.srvtoggle:hover{color:var(--acid);border-color:var(--moss-deep)}
 .srv{font-size:11px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);
   color:var(--bone);transition:all .28s var(--ease);font-variant-numeric:tabular-nums}
 .srv:hover{border-color:var(--moss);color:var(--acid);box-shadow:0 0 18px rgba(150,150,90,.2)}
@@ -585,16 +594,26 @@ function render(force){
     host.appendChild(card);
   });
   paintShield(state);
+  const version = document.getElementById('ver');
+  if(version && state.version) version.textContent = 'v'+state.version;
 
   const srv = document.getElementById('servers');
   srv.innerHTML = '';
-  (state.devServers||[]).slice(0,7).forEach(s => {
+  const all = state.devServersShowAll === true;
+  const list = state.devServers || [];
+  list.slice(0, all ? 24 : 7).forEach(s => {
     const a = document.createElement('button');
     a.className = 'srv';
     a.textContent = 'localhost:'+s.port+'  '+(s.process||'');
+    a.title = 'Open http://localhost:'+s.port;
     a.onclick = () => post('navigate',{url:s.url});
     srv.appendChild(a);
   });
+  const toggle = document.createElement('button');
+  toggle.className = 'srvtoggle';
+  toggle.textContent = all ? 'dev only' : 'show all ports';
+  toggle.onclick = () => post('setDevServerScope',{all: !all});
+  srv.appendChild(toggle);
 }
 
 document.getElementById('search').onsubmit = e => {

@@ -6,6 +6,7 @@ final class TabItemView: NSView {
 
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
+    var menuProvider: (() -> NSMenu?)?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let iconSlot = NSView()
@@ -13,6 +14,7 @@ final class TabItemView: NSView {
     private let statusDot = NSView()
     private let closeButton = NSButton()
     private let groupBar = NSView()
+    private let muteBadge = NSImageView()
     private var groupColor: NSColor?
     private var trackingArea: NSTrackingArea?
 
@@ -58,6 +60,13 @@ final class TabItemView: NSView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addSubview(titleLabel)
 
+        muteBadge.image = NSImage(systemSymbolName: "speaker.slash.fill",
+                                  accessibilityDescription: "Muted")
+        muteBadge.contentTintColor = Theme.moss
+        muteBadge.isHidden = true
+        muteBadge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(muteBadge)
+
         closeButton.title = "✕"
         closeButton.font = .systemFont(ofSize: 9, weight: .bold)
         closeButton.isBordered = false
@@ -86,7 +95,12 @@ final class TabItemView: NSView {
 
             titleLabel.leadingAnchor.constraint(equalTo: iconSlot.trailingAnchor, constant: 8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -6),
+            titleLabel.trailingAnchor.constraint(equalTo: muteBadge.leadingAnchor, constant: -5),
+
+            muteBadge.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
+            muteBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+            muteBadge.widthAnchor.constraint(equalToConstant: 11),
+            muteBadge.heightAnchor.constraint(equalToConstant: 11),
 
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
             closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -121,6 +135,10 @@ final class TabItemView: NSView {
         onSelect?()
     }
 
+    override func menu(for event: NSEvent) -> NSMenu? {
+        menuProvider?()
+    }
+
     @objc private func handleClose() {
         onClose?()
     }
@@ -135,6 +153,7 @@ final class TabItemView: NSView {
                active: Bool,
                bypass: Bool,
                busy: Bool,
+               muted: Bool,
                groupColor: NSColor?) {
         let display = title.isEmpty ? "New Tab" : title
         if titleLabel.stringValue != display { titleLabel.stringValue = display }
@@ -145,6 +164,7 @@ final class TabItemView: NSView {
         iconView.isHidden = !showsIcon
         statusDot.isHidden = showsIcon
 
+        muteBadge.isHidden = !muted
         self.groupColor = groupColor
         groupBar.isHidden = groupColor == nil || bypass
         groupBar.layer?.backgroundColor = (groupColor ?? .clear).cgColor

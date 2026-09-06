@@ -110,7 +110,8 @@ class FGFaviconCallback : public CefDownloadImageCallback {
 
 class FGDevToolsObserver : public CefDevToolsMessageObserver {
  public:
-  FGDevToolsObserver() : pending_([NSMutableDictionary dictionary]) {}
+  explicit FGDevToolsObserver(FGBrowserView* owner)
+      : pending_([NSMutableDictionary dictionary]), owner_(owner) {}
 
   void Store(int message_id, void (^handler)(id)) {
     if (!handler) {
@@ -118,6 +119,44 @@ class FGDevToolsObserver : public CefDevToolsMessageObserver {
     }
     std::lock_guard<std::mutex> guard(lock_);
     pending_[@(message_id)] = [handler copy];
+  }
+
+  void OnDevToolsEvent(CefRefPtr<CefBrowser> browser,
+                       const CefString& method,
+                       const void* params,
+                       size_t params_size) override {
+    if (method.ToString() != "Media.playerPropertiesChanged" || !params || params_size == 0) {
+      return;
+    }
+    NSData* data = [NSData dataWithBytes:params length:params_size];
+    NSDictionary* parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:NSDictionary.class]) {
+      return;
+    }
+    NSArray* properties = parsed[@"properties"];
+    if (![properties isKindOfClass:NSArray.class]) {
+      return;
+    }
+
+    NSMutableDictionary* collected = [NSMutableDictionary dictionary];
+    for (id entry in properties) {
+      if (![entry isKindOfClass:NSDictionary.class]) {
+        continue;
+      }
+      NSString* name = entry[@"name"];
+      id value = entry[@"value"];
+      if ([name isKindOfClass:NSString.class] && value) {
+        collected[name] = value;
+      }
+    }
+    if (collected.count == 0) {
+      return;
+    }
+
+    __weak FGBrowserView* owner = owner_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [owner mergeMediaProperties:collected];
+    });
   }
 
   void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser,
@@ -157,6 +196,7 @@ class FGDevToolsObserver : public CefDevToolsMessageObserver {
  private:
   std::mutex lock_;
   NSMutableDictionary* pending_;
+  __weak FGBrowserView* owner_;
   IMPLEMENT_REFCOUNTING(FGDevToolsObserver);
 };
 
@@ -343,9 +383,10 @@ void FGClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     browser_ = browser;
   }
   if (!devtools_observer_) {
-    devtools_observer_ = new FGDevToolsObserver();
+    devtools_observer_ = new FGDevToolsObserver(owner_);
     devtools_registration_ =
         browser->GetHost()->AddDevToolsMessageObserver(devtools_observer_);
+    browser->GetHost()->ExecuteDevToolsMethod(0, "Media.enable", nullptr);
   }
   NSString* startup = FGBrowserView.documentStartScript;
   if (startup.length > 0) {
