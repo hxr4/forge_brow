@@ -21,8 +21,11 @@ while true; do
     printf '\033[1;36m==> job %s\033[0m\n' "$id"
     sed 's/^/    /' "$job"
     printf '\n'
-    ( cd "$ROOT" && bash "$job" ) > "$LOGS/$id.log" 2>&1
+    ( cd "$ROOT" && exec 0</dev/null; timeout "${AGENT_JOB_TIMEOUT:-420}" bash "$job" ) > "$LOGS/$id.log" 2>&1
     code=$?
+    if [ "$code" = "124" ]; then
+      printf '\n[runner] job timed out after %ss and was killed\n' "${AGENT_JOB_TIMEOUT:-420}" >> "$LOGS/$id.log"
+    fi
     printf '\nEXIT=%s\n' "$code" >> "$LOGS/$id.log"
     tail -n 15 "$LOGS/$id.log" | sed 's/^/    /'
     rm -f "$job"

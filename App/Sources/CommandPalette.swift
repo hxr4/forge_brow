@@ -95,10 +95,6 @@ final class CommandPaletteController: NSObject, NSTableViewDataSource, NSTableVi
         content.layer?.cornerRadius = 15
         content.layer?.borderWidth = 1
         content.layer?.borderColor = Theme.line2.cgColor
-        content.layer?.shadowColor = Theme.acid.cgColor
-        content.layer?.shadowOpacity = 0.1
-        content.layer?.shadowRadius = 30
-        content.layer?.shadowOffset = .zero
         panel.contentView = content
 
         let field = NSTextField()

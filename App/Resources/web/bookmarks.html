@@ -13,10 +13,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     root.innerHTML = '<div class="card" id="list"></div>';
     const list = root.querySelector('#list');
     list.innerHTML = marks.map(m =>
-      '<div class="item"><span class="dot"></span><div class="meta" data-url="'+esc(m.url)+'">'
-      + '<div class="t">'+esc(m.title)+'</div><div class="u">'+esc(host(m.url))+'</div></div>'
+      '<div class="item"><span class="dot"></span><a class="meta" href="'+esc(m.url)+'" data-url="'+esc(m.url)+'">'
+      + '<div class="t">'+esc(m.title)+'</div><div class="u">'+esc(host(m.url))+'</div></a>'
       + '<button class="btn danger" data-remove="'+esc(m.url)+'">Remove</button></div>').join('');
-    list.querySelectorAll('.meta').forEach(m => m.onclick = () => post('navigate',{url:m.dataset.url}));
     list.querySelectorAll('[data-remove]').forEach(b =>
       b.onclick = () => post('removeBookmark',{url:b.dataset.remove}).then(()=>setTimeout(draw,120)));
   }

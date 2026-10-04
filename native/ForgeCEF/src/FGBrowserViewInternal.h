@@ -16,6 +16,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)handleBlockedRequest;
 - (void)handleFindMatchCount:(NSInteger)count active:(NSInteger)activeOrdinal;
 - (void)handleNewTabRequest:(NSString *)url disposition:(FGNavigationDisposition)disposition;
+- (void)handleContextMenu:(NSDictionary *)params;
+- (void)handleContentFullscreen:(BOOL)fullscreen;
+- (void)handleLoadProgress:(double)progress;
+- (void)handleStatusText:(NSString *)text;
 @end
 
 NS_ASSUME_NONNULL_END

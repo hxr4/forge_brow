@@ -200,6 +200,30 @@ class FGDevToolsObserver : public CefDevToolsMessageObserver {
   IMPLEMENT_REFCOUNTING(FGDevToolsObserver);
 };
 
+// Maps Chromium's window-open disposition onto Forge's tab model. Returns
+// false for dispositions that should stay in the current tab.
+bool MapDisposition(cef_window_open_disposition_t source, FGNavigationDisposition* out) {
+  switch (source) {
+    case CEF_WOD_NEW_FOREGROUND_TAB:
+    case CEF_WOD_NEW_POPUP:
+    case CEF_WOD_SINGLETON_TAB:
+    case CEF_WOD_SWITCH_TO_TAB:
+      *out = FGNavigationDispositionNewForegroundTab;
+      return true;
+    case CEF_WOD_NEW_BACKGROUND_TAB:
+      *out = FGNavigationDispositionNewBackgroundTab;
+      return true;
+    case CEF_WOD_NEW_WINDOW:
+      *out = FGNavigationDispositionNewWindow;
+      return true;
+    case CEF_WOD_OFF_THE_RECORD:
+      *out = FGNavigationDispositionNewPrivateWindow;
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool IsInternalScheme(const std::string& url) {
   if (url.empty()) {
     return true;
@@ -218,7 +242,7 @@ bool IsInternalScheme(const std::string& url) {
 
 FGClient::FGClient(FGBrowserView* owner) : owner_(owner) {}
 
-void FGClient::Evaluate(const std::string& expression, void (^completion)(id)) {
+void FGClient::Evaluate(const std::string& expression, void (^completion)(id), bool user_gesture) {
   CefRefPtr<CefBrowser> target = browser();
   if (!target || expression.empty()) {
     if (completion) {
@@ -232,6 +256,9 @@ void FGClient::Evaluate(const std::string& expression, void (^completion)(id)) {
   params->SetBool("returnByValue", true);
   params->SetBool("awaitPromise", false);
   params->SetInt("timeout", 900);
+  if (user_gesture) {
+    params->SetBool("userGesture", true);
+  }
 
   const int assigned =
       target->GetHost()->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
@@ -341,10 +368,8 @@ bool FGClient::OnBeforePopup(CefRefPtr<CefBrowser> browser,
   }
 
   NSString* url = ToNSString(target_url);
-  const FGNavigationDisposition disposition =
-      (target_disposition == CEF_WOD_NEW_BACKGROUND_TAB)
-          ? FGNavigationDispositionNewBackgroundTab
-          : FGNavigationDispositionNewForegroundTab;
+  FGNavigationDisposition disposition = FGNavigationDispositionNewForegroundTab;
+  MapDisposition(target_disposition, &disposition);
 
   __weak FGBrowserView* owner = owner_;
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -421,6 +446,12 @@ void FGClient::OnLoadEnd(CefRefPtr<CefBrowser> browser,
 }
 
 void FGClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
+  // The tab was closed (or gave up on this attempt) before Chromium finished
+  // creating the browser; without this it would live on, invisible and playing.
+  if (detached_.load(std::memory_order_relaxed)) {
+    browser->GetHost()->CloseBrowser(true);
+    return;
+  }
   {
     std::lock_guard<std::mutex> guard(browser_lock_);
     browser_ = browser;
@@ -649,6 +680,11 @@ bool FGClient::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
                              const CefKeyEvent& event,
                              CefEventHandle os_event,
                              bool* is_keyboard_shortcut) {
+  if (event.type == KEYEVENT_RAWKEYDOWN && event.windows_key_code == 0x1B && browser &&
+      browser->GetHost()->IsFullscreen()) {
+    browser->GetHost()->ExitFullscreen(true);
+    return true;
+  }
   const bool command_down = (event.modifiers & EVENTFLAG_COMMAND_DOWN) != 0;
   if (event.type == KEYEVENT_RAWKEYDOWN && command_down && event.windows_key_code == 'K') {
     __weak FGBrowserView* owner = owner_;
@@ -658,4 +694,88 @@ bool FGClient::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
     return true;
   }
   return false;
+}
+
+
+bool FGClient::RunContextMenu(CefRefPtr<CefBrowser> browser,
+                              CefRefPtr<CefFrame> frame,
+                              CefRefPtr<CefContextMenuParams> params,
+                              CefRefPtr<CefMenuModel> model,
+                              CefRefPtr<CefRunContextMenuCallback> callback) {
+  // Forge draws its own native menu (link routing, image tools, media controls)
+  // instead of the stock CEF model, which offers little beyond back/reload.
+  NSMutableArray* suggestions = [NSMutableArray array];
+  std::vector<CefString> words;
+  if (params->GetDictionarySuggestions(words)) {
+    for (const auto& word : words) {
+      [suggestions addObject:ToNSString(word)];
+    }
+  }
+
+  NSDictionary* info = @{
+    @"x": @(params->GetXCoord()),
+    @"y": @(params->GetYCoord()),
+    @"typeFlags": @(static_cast<int>(params->GetTypeFlags())),
+    @"linkURL": ToNSString(params->GetLinkUrl()),
+    @"linkText": ToNSString(params->GetTitleText()),
+    @"sourceURL": ToNSString(params->GetSourceUrl()),
+    @"hasImageContents": @(params->HasImageContents()),
+    @"pageURL": ToNSString(params->GetPageUrl()),
+    @"frameURL": ToNSString(params->GetFrameUrl()),
+    @"mediaType": @(static_cast<int>(params->GetMediaType())),
+    @"mediaFlags": @(static_cast<int>(params->GetMediaStateFlags())),
+    @"selectionText": ToNSString(params->GetSelectionText()),
+    @"misspelledWord": ToNSString(params->GetMisspelledWord()),
+    @"suggestions": suggestions,
+    @"isEditable": @(params->IsEditable()),
+    @"editFlags": @(static_cast<int>(params->GetEditStateFlags())),
+  };
+
+  callback->Cancel();
+
+  __weak FGBrowserView* owner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [owner handleContextMenu:info];
+  });
+  return true;
+}
+
+bool FGClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser,
+                                CefRefPtr<CefFrame> frame,
+                                const CefString& target_url,
+                                WindowOpenDisposition target_disposition,
+                                bool user_gesture) {
+  // Cmd-click, middle-click and shift-click on ordinary links arrive here.
+  FGNavigationDisposition disposition;
+  if (!MapDisposition(target_disposition, &disposition)) {
+    return false;
+  }
+  NSString* url = ToNSString(target_url);
+  __weak FGBrowserView* owner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [owner handleNewTabRequest:url disposition:disposition];
+  });
+  return true;
+}
+
+void FGClient::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) {
+  __weak FGBrowserView* owner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [owner handleContentFullscreen:fullscreen];
+  });
+}
+
+void FGClient::OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) {
+  __weak FGBrowserView* owner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [owner handleLoadProgress:progress];
+  });
+}
+
+void FGClient::OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString& value) {
+  NSString* text = ToNSString(value);
+  __weak FGBrowserView* owner = owner_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [owner handleStatusText:text];
+  });
 }

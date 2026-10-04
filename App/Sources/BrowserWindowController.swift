@@ -15,14 +15,27 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     private let addressBox = AddressFieldContainer()
     private let addressField = NSTextField()
-    private let backButton = NSButton()
-    private let forwardButton = NSButton()
-    private let reloadButton = NSButton()
-    private let layoutButton = NSButton()
-    private let paletteButton = NSButton()
+    private let securityIcon = NSImageView()
+    private let sidebarButton = ChromeButton(symbol: "sidebar.left", label: "Toggle Sidebar (⌃⌘S)",
+                                             pointSize: 14, target: nil, action: nil)
+    private let backButton = ChromeButton(symbol: "chevron.left", label: "Back (⌘[)",
+                                          pointSize: 14, weight: .medium, target: nil, action: nil)
+    private let forwardButton = ChromeButton(symbol: "chevron.right", label: "Forward (⌘])",
+                                             pointSize: 14, weight: .medium, target: nil, action: nil)
+    private let reloadButton = ChromeButton(symbol: "arrow.clockwise", label: "Reload (⌘R)",
+                                            pointSize: 13, weight: .medium, target: nil, action: nil)
+    private let shieldsButton = ChromeButton(symbol: "shield.lefthalf.filled", label: "Shields",
+                                             pointSize: 13, target: nil, action: nil)
+    private let menuButton = ChromeButton(symbol: "ellipsis", label: "Forge Menu",
+                                          pointSize: 14, weight: .semibold, target: nil, action: nil)
     private let bypassPill = NSTextField(labelWithString: "")
     private let privatePill = NSTextField(labelWithString: "")
-    private let blockCounter = NSTextField(labelWithString: "")
+    private let progressView = LoadProgressView()
+    private let statusBubble = StatusBubble()
+    private var fullscreenTabID: UUID?
+    private var enteredWindowFullscreenForContent = false
+    private var observers: [NSObjectProtocol] = []
+    private var keyMonitor: Any?
 
     private let sidebar = SidebarView()
     private let nowPlayingBar = NowPlayingBar()
@@ -54,7 +67,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.orientationKey)
             chrome.orientation = newValue
             tabStrip.orientation = newValue
-            layoutButton.title = newValue == .horizontal ? "▤" : "▥"
+            sidebar.hidesTabsSection = newValue == .vertical
+            layoutToolbar()
         }
     }
 
@@ -69,17 +83,27 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         self.init(isPrivate: false)
     }
 
-    convenience init(isPrivate: Bool) {
+    convenience init(isPrivate: Bool, openHome: Bool = true) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1360, height: 880),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Forge"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = Theme.void
+        // An empty compact toolbar centres the traffic lights in a 38pt band, so
+        // the tab strip can share the titlebar row instead of stacking under it.
+        let shelf = NSToolbar(identifier: "ForgeTitlebar")
+        shelf.showsBaselineSeparator = false
+        shelf.allowsUserCustomization = false
+        window.toolbar = shelf
+        window.toolbarStyle = .unifiedCompact
+        window.collectionBehavior.insert(.fullScreenPrimary)
+        window.minSize = NSSize(width: 560, height: 360)
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = Theme.ink
         window.appearance = NSAppearance(named: .darkAqua)
         window.center()
         window.setFrameAutosaveName("ForgeMainWindow")
@@ -89,7 +113,85 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         buildInterface()
         configurePalette()
         startMonitors()
-        newTab(url: homeURL)
+        observeWindow()
+        if openHome { newTab(url: homeURL) }
+    }
+
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    private func observeWindow() {
+        guard let window else { return }
+        let center = NotificationCenter.default
+        let measure: (Notification) -> Void = { [weak self] _ in self?.measureTitlebar() }
+        observers.append(center.addObserver(forName: NSWindow.didResizeNotification, object: window,
+                                            queue: .main, using: measure))
+        observers.append(center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window,
+                                            queue: .main) { [weak self] _ in
+            self?.chrome.isWindowFullscreen = true
+            self?.layoutToolbar()
+        })
+        observers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window,
+                                            queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.chrome.isWindowFullscreen = false
+            self.enteredWindowFullscreenForContent = false
+            self.measureTitlebar()
+            self.layoutToolbar()
+        })
+        // Leaving macOS fullscreen (green button, ⌃⌘F, Esc) must also take the
+        // page out of HTML5 fullscreen, or the player stays stretched.
+        observers.append(center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window,
+                                            queue: .main) { [weak self] _ in
+            guard let self, let tab = self.fullscreenTab else { return }
+            self.enteredWindowFullscreenForContent = false
+            tab.browserView.exitContentFullscreen()
+        })
+        // v1 never released closed windows: their tabs kept playing audio in the
+        // background and every closed window came back on the next launch.
+        observers.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window,
+                                            queue: .main) { [weak self] _ in self?.teardown() })
+        observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window,
+                                            queue: .main) { [weak self] _ in self?.tabStrip.alphaValue = 1 })
+        observers.append(center.addObserver(forName: NSWindow.didResignKeyNotification, object: window,
+                                            queue: .main) { [weak self] _ in self?.tabStrip.alphaValue = 0.82 })
+        // Esc leaves video fullscreen even when keyboard focus is not inside the page
+        // (CEF only sees the key when its view is first responder).
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == 53, event.window === self.window,
+                  self.chrome.isImmersive, let tab = self.fullscreenTab else { return event }
+            tab.browserView.exitContentFullscreen()
+            return nil
+        }
+        measureTitlebar()
+    }
+
+    private func teardown() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+        stateTimer?.invalidate()
+        statsTimer?.invalidate()
+        audioTimer?.invalidate()
+        suggestionDebounce?.invalidate()
+        stateTimer = nil
+        if !isPrivate {
+            for tab in tabs where tab.url.hasPrefix("http") {
+                ClosedTabStore.shared.push(url: tab.url, title: tab.title)
+            }
+        }
+        for tab in tabs {
+            tab.browserView.closeBrowser()
+            tab.browserView.removeFromSuperview()
+        }
+        tabs.removeAll()
+        (NSApp.delegate as? ForgeAppDelegate)?.windowDidClose(self)
+    }
+
+    private func measureTitlebar() {
+        guard let window, !window.styleMask.contains(.fullScreen) else { return }
+        let band = window.frame.height - window.contentLayoutRect.height
+        chrome.topRowHeight = max(Theme.Metrics.stripHeight, band.rounded())
     }
 
     private func buildInterface() {
@@ -102,6 +204,8 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
         chrome.autoresizingMask = [.width, .height]
         chrome.frame = root.bounds
+        chrome.wantsLayer = true
+        chrome.layer?.backgroundColor = Theme.ink.cgColor
         root.addSubview(chrome)
 
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id: id) }
@@ -110,6 +214,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         tabStrip.onToggleGroup = { [weak self] id in self?.toggleGroupCollapsed(id) }
         tabStrip.menuProvider = { [weak self] id in self?.tabContextMenu(for: id) }
         tabStrip.overflowMenuProvider = { [weak self] in self?.tabOverflowMenu() }
+        tabStrip.onMove = { [weak self] moving, target in self?.moveTab(moving, to: target) }
 
         toolbarView.wantsLayer = true
         toolbarView.layer?.backgroundColor = Theme.ink.cgColor
@@ -127,11 +232,14 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         chrome.addSubview(tabStrip)
         chrome.addSubview(toolbarView)
         chrome.addSubview(dividerView)
+        chrome.addSubview(progressView)
+        progressView.color = isPrivate ? Theme.privateAccent : Theme.accent
 
         chrome.tabStrip = tabStrip
         chrome.toolbar = toolbarView
         chrome.content = contentContainer
         chrome.divider = dividerView
+        chrome.progress = progressView
         chrome.sidebar = sidebar
         chrome.nowPlaying = nowPlayingBar
         buildSidebar()
@@ -141,16 +249,24 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         buildToolbar()
         buildFindBar()
         buildSuggestions()
+        contentContainer.addSubview(statusBubble, positioned: .above, relativeTo: nil)
         orientation = orientation
     }
 
     private func buildToolbar() {
-        style(button: backButton, glyph: "‹", action: #selector(handleBack))
-        style(button: forwardButton, glyph: "›", action: #selector(handleForward))
-        style(button: reloadButton, glyph: "⟳", action: #selector(handleReload))
-        style(button: layoutButton, glyph: "▤", action: #selector(handleToggleOrientation))
-        style(button: paletteButton, glyph: "⌘K", action: #selector(handleTogglePalette))
-        paletteButton.font = .systemFont(ofSize: 11, weight: .semibold)
+        let wire: [(ChromeButton, Selector)] = [
+            (sidebarButton, #selector(handleToggleSidebar)),
+            (backButton, #selector(handleBack)),
+            (forwardButton, #selector(handleForward)),
+            (reloadButton, #selector(handleReload)),
+            (shieldsButton, #selector(handleShowShields)),
+            (menuButton, #selector(handleShowForgeMenu))
+        ]
+        for (button, action) in wire {
+            button.target = self
+            button.action = action
+        }
+        sidebarButton.isToggled = sidebar.isOpen
 
         addressField.isBezeled = false
         addressField.drawsBackground = false
@@ -160,49 +276,57 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         addressField.delegate = self
         addressField.target = self
         addressField.action = #selector(handleAddressSubmit)
+        addressField.cell?.lineBreakMode = .byTruncatingTail
         addressField.placeholderAttributedString = NSAttributedString(
-            string: "Search, or type a URL",
+            string: isPrivate ? "Search privately or enter address" : "Search or enter address",
             attributes: [.foregroundColor: Theme.muted, .font: NSFont.systemFont(ofSize: 13)]
         )
         addressField.translatesAutoresizingMaskIntoConstraints = false
+        securityIcon.translatesAutoresizingMaskIntoConstraints = false
+        securityIcon.imageScaling = .scaleNone
+        addressBox.addSubview(securityIcon)
         addressBox.addSubview(addressField)
         NSLayoutConstraint.activate([
-            addressField.leadingAnchor.constraint(equalTo: addressBox.leadingAnchor, constant: 13),
-            addressField.trailingAnchor.constraint(equalTo: addressBox.trailingAnchor, constant: -13),
+            securityIcon.leadingAnchor.constraint(equalTo: addressBox.leadingAnchor, constant: 9),
+            securityIcon.centerYAnchor.constraint(equalTo: addressBox.centerYAnchor),
+            securityIcon.widthAnchor.constraint(equalToConstant: 16),
+            addressField.leadingAnchor.constraint(equalTo: securityIcon.trailingAnchor, constant: 5),
+            addressField.trailingAnchor.constraint(equalTo: addressBox.trailingAnchor, constant: -10),
             addressField.centerYAnchor.constraint(equalTo: addressBox.centerYAnchor)
         ])
+        if isPrivate {
+            addressBox.accentOverride = Theme.privateAccent
+        }
 
-        bypassPill.font = .systemFont(ofSize: 10, weight: .heavy)
-        bypassPill.textColor = Theme.void
-        bypassPill.alignment = .center
-        bypassPill.wantsLayer = true
-        bypassPill.layer?.backgroundColor = Theme.warn.cgColor
-        bypassPill.layer?.cornerRadius = 5
-        bypassPill.layer?.shadowColor = Theme.warn.cgColor
-        bypassPill.layer?.shadowOpacity = 0.5
-        bypassPill.layer?.shadowRadius = 10
-        bypassPill.layer?.shadowOffset = .zero
+        for pill in [bypassPill, privatePill] {
+            pill.font = .systemFont(ofSize: 11, weight: .semibold)
+            pill.alignment = .center
+            pill.wantsLayer = true
+            pill.layer?.cornerRadius = 5
+            pill.layer?.borderWidth = 1
+        }
+        bypassPill.textColor = Theme.warn
+        bypassPill.layer?.backgroundColor = Theme.warn.withAlphaComponent(0.12).cgColor
+        bypassPill.layer?.borderColor = Theme.warn.withAlphaComponent(0.5).cgColor
+        bypassPill.toolTip = "Certificate errors are ignored in this tab. Tools ▸ Ignore Certificate Errors to turn off."
         bypassPill.isHidden = true
 
-        privatePill.stringValue = "PRIVATE"
-        privatePill.font = .systemFont(ofSize: 10, weight: .heavy)
-        privatePill.textColor = Theme.void
-        privatePill.alignment = .center
-        privatePill.wantsLayer = true
-        privatePill.layer?.backgroundColor = Theme.privateAccent.cgColor
-        privatePill.layer?.cornerRadius = 5
-        privatePill.layer?.shadowColor = Theme.privateAccent.cgColor
-        privatePill.layer?.shadowOpacity = 0.45
-        privatePill.layer?.shadowRadius = 10
-        privatePill.layer?.shadowOffset = .zero
+        privatePill.stringValue = "Private"
+        privatePill.textColor = Theme.privateAccent
+        privatePill.layer?.backgroundColor = Theme.privateAccent.withAlphaComponent(0.12).cgColor
+        privatePill.layer?.borderColor = Theme.privateAccent.withAlphaComponent(0.45).cgColor
+        privatePill.toolTip = "Nothing from this window is saved to history, cookies or the session."
         privatePill.isHidden = !isPrivate
 
-        blockCounter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        blockCounter.textColor = Theme.moss
+        shieldsButton.imagePosition = .imageLeading
+        shieldsButton.imageHugsTitle = true
 
-        for view in [backButton, forwardButton, reloadButton, addressBox, privatePill, bypassPill, blockCounter, layoutButton, paletteButton] {
+        for view in [sidebarButton, backButton, forwardButton, reloadButton, addressBox, privatePill,
+                     bypassPill, shieldsButton, menuButton] as [NSView] {
             toolbarView.addSubview(view)
         }
+        toolbarView.wantsLayer = true
+        toolbarView.layer?.backgroundColor = Theme.ink.cgColor
         layoutToolbar()
     }
 
@@ -252,6 +376,90 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     @objc func handleToggleSidebar() {
         sidebar.toggle()
         chrome.sidebarWidth = sidebar.preferredWidth
+        sidebarButton.isToggled = sidebar.isOpen
+    }
+
+    @objc func handleShowNetworkInspector() {
+        sidebar.show(.network)
+        chrome.sidebarWidth = sidebar.preferredWidth
+        sidebarButton.isToggled = true
+    }
+
+    @objc func handleShowShields() {
+        guard let tab = selectedTab else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let here = tab.browserView.blockedCountForTab
+        let hidden = tab.browserView.cosmeticSelectorCount
+        let host = HiddenElements.host(of: tab.url) ?? "this page"
+
+        let header = NSMenuItem(title: "Shields for \(host)", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        func stat(_ text: String) {
+            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        stat("\(formatter.string(from: NSNumber(value: here)) ?? "0") requests blocked on this page")
+        if hidden > 0 { stat("\(hidden) cosmetic rules active") }
+        stat("\(formatter.string(from: NSNumber(value: FGAdblock.shared.blockedCount)) ?? "0") blocked this session")
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Network Inspector…") { [weak self] in self?.handleShowNetworkInspector() })
+        if tab.url.hasPrefix("http"), HiddenElements.selectors(for: tab.url).count > 0 {
+            menu.addItem(ClosureMenuItem("Restore Hidden Elements on \(host)") { [weak self] in
+                self?.restoreHiddenElements(in: tab.browserView)
+            })
+        }
+        menu.addItem(ClosureMenuItem("Stats for Nerds") { [weak self] in self?.handleToggleStats() })
+        popUp(menu, under: shieldsButton)
+    }
+
+    @objc func handleShowForgeMenu() {
+        let menu = NSMenu()
+        func add(_ title: String, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command,
+                 _ handler: @escaping () -> Void) {
+            let item = ClosureMenuItem(title, handler: handler)
+            item.keyEquivalent = key
+            item.keyEquivalentModifierMask = mods
+            menu.addItem(item)
+        }
+        add("New Tab", "t") { [weak self] in self?.handleNewTab() }
+        add("New Window", "n") { (NSApp.delegate as? ForgeAppDelegate)?.openNewWindow() }
+        add("New Private Window", "n", [.command, .shift]) { (NSApp.delegate as? ForgeAppDelegate)?.openPrivateWindow() }
+        menu.addItem(.separator())
+        add("Command Palette", "k") { [weak self] in self?.handleTogglePalette() }
+        add("Find in Page…", "f") { [weak self] in self?.handleFind() }
+        let zoom = selectedTab?.browserView.zoomPercent() ?? 100
+        add("Zoom In (\(zoom)%)", "+") { [weak self] in self?.handleZoomIn() }
+        add("Zoom Out", "-") { [weak self] in self?.handleZoomOut() }
+        add("Actual Size", "0") { [weak self] in self?.handleActualSize() }
+        menu.addItem(.separator())
+        add(orientation == .horizontal ? "Use Vertical Tabs" : "Use Horizontal Tabs", "e", [.command, .shift]) {
+            [weak self] in self?.handleToggleOrientation()
+        }
+        add(sidebar.isOpen ? "Hide Sidebar" : "Show Sidebar", "s", [.command, .control]) {
+            [weak self] in self?.handleToggleSidebar()
+        }
+        menu.addItem(.separator())
+        add("Bookmarks", "b", [.command, .option]) { [weak self] in self?.handleShowBookmarks() }
+        add("History", "y") { [weak self] in self?.handleShowHistory() }
+        add("Downloads", "j", [.command, .shift]) { [weak self] in self?.handleShowDownloads() }
+        menu.addItem(.separator())
+        add("Developer Tools", "i", [.command, .option]) { [weak self] in self?.handleShowDevTools() }
+        add("Stats for Nerds", "s", [.command, .option]) { [weak self] in self?.handleToggleStats() }
+        menu.addItem(.separator())
+        add("Settings…", ",") { [weak self] in self?.handleShowSettings() }
+        add("Help") { [weak self] in self?.handleShowHelp() }
+        popUp(menu, under: menuButton)
+    }
+
+    private func popUp(_ menu: NSMenu, under button: NSView) {
+        guard let window else { return }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: rect.minY - 4), in: nil)
     }
 
     private func buildNowPlaying() {
@@ -678,42 +886,47 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     private func layoutToolbar() {
-        let h = Theme.Metrics.toolbarHeight
-        let pad: CGFloat = 10
-        let bw: CGFloat = 30
-        let fieldH: CGFloat = 30
-        let y = (h - fieldH) / 2
-        var x = pad
+        let h = toolbarView.bounds.height
+        let size = Theme.Metrics.controlHeight
+        let y = ((h - size) / 2).rounded()
+        var x: CGFloat = 8
 
-        for button in [backButton, forwardButton, reloadButton] {
-            button.frame = NSRect(x: x, y: y, width: bw, height: fieldH)
-            x += bw + 2
+        for button in [sidebarButton, backButton, forwardButton, reloadButton] {
+            button.frame = NSRect(x: x, y: y, width: 30, height: size)
+            x += 32
         }
         x += 6
 
-        let rightWidth: CGFloat = 30 + 6 + 46 + pad
-        let counterWidth: CGFloat = 112
-        let pillWidth: CGFloat = bypassPill.isHidden ? 0 : 150
-        let privateWidth: CGFloat = privatePill.isHidden ? 0 : 74
-        let fieldWidth = max(140, toolbarView.bounds.width - x - rightWidth - counterWidth - pillWidth - privateWidth - 16)
-
-        addressBox.frame = NSRect(x: x, y: y, width: fieldWidth, height: fieldH)
-        x += fieldWidth + 10
-
-        if !privatePill.isHidden {
-            privatePill.frame = NSRect(x: x, y: y + 6, width: 66, height: 18)
-            x += 74
-        }
+        var right = toolbarView.bounds.width - 8
+        right -= 30
+        menuButton.frame = NSRect(x: right, y: y, width: 30, height: size)
+        right -= 4
+        let shieldsWidth = max(30, shieldsButton.attributedTitle.size().width + 34)
+        right -= shieldsWidth
+        shieldsButton.frame = NSRect(x: right, y: y, width: shieldsWidth, height: size)
+        right -= 8
 
         if !bypassPill.isHidden {
-            bypassPill.frame = NSRect(x: x, y: y + 6, width: 150, height: 18)
-            x += 158
+            right -= 148
+            bypassPill.frame = NSRect(x: right, y: y + 5, width: 148, height: 18)
+            right -= 8
         }
-        blockCounter.frame = NSRect(x: x, y: y + 7, width: counterWidth, height: 16)
-        x += counterWidth + 6
+        if !privatePill.isHidden {
+            right -= 62
+            privatePill.frame = NSRect(x: right, y: y + 5, width: 62, height: 18)
+            right -= 8
+        }
 
-        layoutButton.frame = NSRect(x: toolbarView.bounds.width - pad - 46 - 6 - 30, y: y, width: 30, height: fieldH)
-        paletteButton.frame = NSRect(x: toolbarView.bounds.width - pad - 46, y: y, width: 46, height: fieldH)
+        // Keep the address well visually centred in the window when there is room.
+        let available = max(140, right - x)
+        let ideal = min(available, 760)
+        var fieldX = x
+        if let window, available > ideal {
+            let windowMid = window.frame.width / 2
+            let localMid = toolbarView.convert(NSPoint(x: windowMid, y: 0), from: chrome).x
+            fieldX = min(max(x, localMid - ideal / 2), right - ideal)
+        }
+        addressBox.frame = NSRect(x: fieldX, y: y, width: ideal, height: size)
     }
 
     private func startMonitors() {
@@ -742,21 +955,132 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     // MARK: - Tabs
 
-    @discardableResult
-    func newTab(url: String, select: Bool = true) -> Tab {
-        let tab = Tab(url: url, isPrivate: isPrivate)
-        tab.browserView.browserDelegate = self
-        tabs.append(tab)
+    var isRestorable: Bool { !isPrivate }
 
+    func sessionWindow() -> SessionWindow? {
+        guard !isPrivate else { return nil }
+        let entries: [SessionTab] = tabs.compactMap { tab in
+            let target = tab.url.isEmpty ? homeURL : tab.url
+            guard target.hasPrefix("http://") || target.hasPrefix("https://") || target == homeURL else {
+                return nil
+            }
+            return SessionTab(url: target, title: tab.title, groupID: tab.groupID?.uuidString)
+        }
+        guard !entries.isEmpty else { return nil }
+        let stored = groups.map {
+            SessionGroup(id: $0.id.uuidString, name: $0.name,
+                         colorIndex: $0.colorIndex, isCollapsed: $0.isCollapsed)
+        }
+        let box = window?.frame ?? .zero
+        return SessionWindow(
+            frame: [box.origin.x, box.origin.y, box.size.width, box.size.height],
+            tabs: entries,
+            groups: stored,
+            selectedIndex: min(max(0, selectedIndex), max(0, entries.count - 1)))
+    }
+
+    func restore(_ saved: SessionWindow) {
+        guard !isPrivate else { return }
+
+        var remapped: [String: UUID] = [:]
+        groups = saved.groups.map { stored in
+            var group = TabGroup(name: stored.name, colorIndex: stored.colorIndex)
+            group.isCollapsed = stored.isCollapsed
+            remapped[stored.id] = group.id
+            return group
+        }
+
+        for tab in tabs {
+            tab.browserView.closeBrowser()
+            tab.browserView.removeFromSuperview()
+        }
+        tabs.removeAll()
+
+        for entry in saved.tabs {
+            let tab = Tab(restoring: entry, isPrivate: false)
+            if let raw = entry.groupID { tab.groupID = remapped[raw] }
+            tabs.append(tab)
+        }
+
+        if tabs.isEmpty { newTab(url: homeURL); return }
+
+        selectedIndex = min(max(0, saved.selectedIndex), tabs.count - 1)
+        if saved.frame.count == 4 {
+            let box = NSRect(x: saved.frame[0], y: saved.frame[1],
+                             width: saved.frame[2], height: saved.frame[3])
+            if box.width > 400, box.height > 300, NSScreen.screens.contains(where: { $0.frame.intersects(box) }) {
+                window?.setFrame(box, display: false)
+            }
+        }
+        refreshChrome()
+    }
+
+    func scheduleSessionSave() {
+        guard !isPrivate else { return }
+        (NSApp.delegate as? ForgeAppDelegate)?.scheduleSessionSave()
+    }
+
+    /// Tabs opened from a page land beside their opener (after any siblings it
+    /// already opened), not at the far end of the strip.
+    private var openerChildren: (opener: UUID, last: UUID)?
+
+    @discardableResult
+    func newTab(url: String, select: Bool = true, fromOpener opener: Tab? = nil) -> Tab {
+        let tab = Tab(url: url, isPrivate: isPrivate)
+        var index = tabs.count
+        if let opener, let openerIndex = tabIndex(opener.id) {
+            index = openerIndex + 1
+            if let chain = openerChildren, chain.opener == opener.id, let last = tabIndex(chain.last) {
+                index = last + 1
+            }
+            tab.groupID = opener.groupID
+            openerChildren = (opener.id, tab.id)
+        } else {
+            openerChildren = nil
+        }
+        tabs.insert(tab, at: index)
+        attach(tab)
+
+        if select {
+            selectedIndex = index
+        } else if index <= selectedIndex {
+            selectedIndex += 1
+        }
+        refreshChrome()
+        scheduleSessionSave()
+        return tab
+    }
+
+    func moveTab(_ id: UUID, to targetID: UUID) {
+        guard let from = tabIndex(id), let to = tabIndex(targetID), from != to else { return }
+        let selectedID = selectedTab?.id
+        let moving = tabs.remove(at: from)
+        moving.groupID = tabs[min(to, tabs.count - 1)].groupID
+        tabs.insert(moving, at: to)
+        if let selectedID, let index = tabIndex(selectedID) { selectedIndex = index }
+        openerChildren = nil
+        pruneGroups()
+        tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
+        sidebar.update(tabs: tabs, groups: groups, selectedIndex: selectedIndex)
+        scheduleSessionSave()
+    }
+
+    /// ⌘1…⌘8 pick that tab, ⌘9 always picks the last one.
+    func selectTab(number: Int) {
+        guard !tabs.isEmpty else { return }
+        selectedIndex = number >= 9 ? tabs.count - 1 : min(number - 1, tabs.count - 1)
+        refreshChrome()
+    }
+
+    private func attach(_ tab: Tab) {
+        guard tab.browserView.superview == nil else { return }
+        tab.browserView.browserDelegate = self
         tab.browserView.translatesAutoresizingMaskIntoConstraints = true
         tab.browserView.autoresizingMask = [.width, .height]
         tab.browserView.frame = contentContainer.bounds
         tab.browserView.isHidden = true
         contentContainer.addSubview(tab.browserView, positioned: .below, relativeTo: findBar)
-
-        if select { selectedIndex = tabs.count - 1 }
-        refreshChrome()
-        return tab
+        tab.wake()
     }
 
     func closeTab(id: UUID) {
@@ -767,9 +1091,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     func closeTab(at index: Int) {
         guard index >= 0, index < tabs.count else { return }
         let tab = tabs.remove(at: index)
-        ClosedTabStore.shared.push(url: tab.url, title: tab.title)
+        if !isPrivate { ClosedTabStore.shared.push(url: tab.url, title: tab.title) }
         tab.browserView.closeBrowser()
         tab.browserView.removeFromSuperview()
+        scheduleSessionSave()
 
         if tabs.isEmpty {
             newTab(url: homeURL)
@@ -782,6 +1107,11 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     var tabGroups: [TabGroup] { groups }
+
+    private var fullscreenTab: Tab? {
+        guard let id = fullscreenTabID else { return nil }
+        return tabs.first { $0.id == id }
+    }
 
     var selectedTabGroupID: UUID? { selectedTab?.groupID }
 
@@ -907,7 +1237,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     func duplicateTab(_ id: UUID) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
-        newTab(url: tab.url)
+        newTab(url: tab.url, fromOpener: tab)
     }
 
     func duplicateInPrivateWindow(_ id: UUID) {
@@ -1020,33 +1350,87 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     private func refreshChrome() {
+        if let tab = selectedTab, tab.isDormant { attach(tab) }
+        if let id = fullscreenTabID, selectedTab?.id != id {
+            tabs.first { $0.id == id }?.browserView.exitContentFullscreen()
+        }
         for (index, tab) in tabs.enumerated() {
+            guard tab.browserView.superview != nil else { continue }
             tab.browserView.isHidden = index != selectedIndex
             if index == selectedIndex { tab.browserView.frame = contentContainer.bounds }
         }
         if findVisible { positionFindBar() }
         if statsVisible { positionStats() }
+        statusBubble.isHidden = true
+        progressView.set(progress: selectedTab?.isLoading == true ? 0.3 : 1, loading: selectedTab?.isLoading == true)
         tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         sidebar.update(tabs: tabs, groups: groups, selectedIndex: selectedIndex)
         updateToolbarState()
     }
 
+    private static let symbolCache = NSCache<NSString, NSImage>()
+
+    private func symbol(_ name: String, size: CGFloat = 11, weight: NSFont.Weight = .semibold) -> NSImage? {
+        let key = "\(name)-\(size)-\(weight.rawValue)" as NSString
+        if let cached = Self.symbolCache.object(forKey: key) { return cached }
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: size, weight: weight))
+        if let image { Self.symbolCache.setObject(image, forKey: key) }
+        return image
+    }
+
+    /// Host in primary text, scheme and path receded, so the part that matters
+    /// for trust (the domain) is the part you read first.
+    private func addressDisplay(for url: String) -> NSAttributedString {
+        let shown = ForgeURL.display(for: url)
+        let font = NSFont.systemFont(ofSize: 13)
+        let text = NSMutableAttributedString(string: shown, attributes: [.foregroundColor: Theme.bone, .font: font])
+        if let host = URL(string: shown)?.host, let range = shown.range(of: host) {
+            text.addAttribute(.foregroundColor, value: Theme.cream, range: NSRange(range, in: shown))
+        } else {
+            text.addAttribute(.foregroundColor, value: Theme.cream, range: NSRange(location: 0, length: text.length))
+        }
+        return text
+    }
+
     private func updateToolbarState() {
         guard let tab = selectedTab else { return }
-        let shown = ForgeURL.display(for: tab.url)
-        if addressField.stringValue != shown && window?.firstResponder !== addressField.currentEditor() {
-            addressField.stringValue = shown
+        let editing = window?.firstResponder === addressField.currentEditor() && addressField.currentEditor() != nil
+        if !editing {
+            let display = addressDisplay(for: tab.url)
+            if addressField.attributedStringValue != display { addressField.attributedStringValue = display }
         }
+
+        let iconName: String
+        let iconTint: NSColor
+        let iconTip: String
+        if tab.ignoresCertificateErrors {
+            (iconName, iconTint, iconTip) = ("exclamationmark.triangle.fill", Theme.warn, "Certificate checks are off for this tab")
+        } else if tab.url.hasPrefix("https://") {
+            (iconName, iconTint, iconTip) = ("lock.fill", Theme.muted, "Secure connection")
+        } else if tab.url.hasPrefix("http://") {
+            let local = ["localhost", "127.0.0.1", "[::1]"].contains { tab.url.contains("//" + $0) }
+            (iconName, iconTint, iconTip) = local
+                ? ("hammer.fill", Theme.muted, "Local development server")
+                : ("lock.open.fill", Theme.warn, "Not secure: this page is not encrypted")
+        } else {
+            (iconName, iconTint, iconTip) = ("magnifyingglass", Theme.muted, "")
+        }
+        securityIcon.image = symbol(iconName)
+        securityIcon.contentTintColor = iconTint
+        securityIcon.toolTip = iconTip.isEmpty ? nil : iconTip
+
         backButton.isEnabled = tab.canGoBack
         forwardButton.isEnabled = tab.canGoForward
-        backButton.contentTintColor = tab.canGoBack ? Theme.bone : Theme.line2
-        forwardButton.contentTintColor = tab.canGoForward ? Theme.bone : Theme.line2
-        reloadButton.title = tab.isLoading ? "✕" : "⟳"
-        window?.title = tab.displayTitle.isEmpty ? "Forge" : "Forge — " + tab.displayTitle
+        reloadButton.setSymbol(tab.isLoading ? "xmark" : "arrow.clockwise",
+                               label: tab.isLoading ? "Stop" : "Reload",
+                               pointSize: 13, weight: .medium)
+        reloadButton.toolTip = tab.isLoading ? "Stop (⌘.)" : "Reload (⌘R)"
+        window?.title = tab.displayTitle.isEmpty ? "Forge" : tab.displayTitle
 
         let wasHidden = bypassPill.isHidden
         if tab.ignoresCertificateErrors {
-            bypassPill.stringValue = "⚠︎  CERT CHECKS OFF"
+            bypassPill.stringValue = "Cert checks off"
             bypassPill.isHidden = false
         } else {
             bypassPill.isHidden = true
@@ -1055,13 +1439,20 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         updateBlockCounter()
     }
 
+    /// The shield shows what was blocked on *this* page; the lifetime number
+    /// lives on the landing page where it is not competing with the URL.
     private func updateBlockCounter() {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        let count = formatter.string(from: NSNumber(value: FGAdblock.shared.blockedCount))
-            ?? String(FGAdblock.shared.blockedCount)
-        let value = count + " blocked"
-        if blockCounter.stringValue != value { blockCounter.stringValue = value }
+        let count = selectedTab?.browserView.blockedCountForTab ?? 0
+        let text = count == 0 ? "" : (count > 999 ? "999+" : String(count))
+        guard shieldsButton.title != text else { return }
+        shieldsButton.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: Theme.bone
+        ])
+        shieldsButton.imagePosition = text.isEmpty ? .imageOnly : .imageLeading
+        shieldsButton.toolTip = count == 0 ? "Shields: nothing blocked on this page"
+                                           : "Shields: \(count) requests blocked on this page"
+        layoutToolbar()
     }
 
     // MARK: - Actions
@@ -1080,7 +1471,11 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         if tab.isLoading { tab.browserView.stopLoading() } else { tab.browserView.reload() }
     }
 
-    @objc func handleFocusAddress() { window?.makeFirstResponder(addressField) }
+    @objc func handleFocusAddress() {
+        if chrome.isImmersive { selectedTab?.browserView.exitContentFullscreen() }
+        window?.makeFirstResponder(addressField)
+        addressField.currentEditor()?.selectAll(nil)
+    }
 
     @objc func handleToggleOrientation() {
         orientation = orientation.flipped
@@ -1094,7 +1489,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         suggestionsView.dismiss()
         SuggestionEngine.shared.cancel()
         let resolved = AddressResolver.resolve(addressField.stringValue)
-        selectedTab?.browserView.loadURL(resolved)
+        navigate(to: resolved)
         window?.makeFirstResponder(nil)
     }
 
@@ -1111,7 +1506,13 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
 
     @objc func handleShowDevTools() { selectedTab?.browserView.showDevTools() }
 
-    func navigate(to url: String) { selectedTab?.browserView.loadURL(url) }
+    func navigate(to url: String) {
+        guard let tab = selectedTab else { return }
+        tab.browserView.loadURL(url)
+        // Show where we are going right away; didChangeURL corrects redirects.
+        tab.url = url
+        updateToolbarState()
+    }
 
     func controlTextDidBeginEditing(_ obj: Notification) { addressBox.isFocused = true }
 
@@ -1260,7 +1661,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         case "navigate":
             if let url = payload["url"] as? String { navigate(to: AddressResolver.resolve(url)) }
         case "newTab":
-            if let url = payload["url"] as? String { newTab(url: AddressResolver.resolve(url)) }
+            if let url = payload["url"] as? String {
+                let background = payload["background"] as? Bool ?? false
+                newTab(url: AddressResolver.resolve(url), select: !background, fromOpener: selectedTab)
+            }
         case "search":
             if let query = payload["query"] as? String { navigate(to: SearchEngines.current.url(for: query)) }
         case "setSearchEngine":
@@ -1360,6 +1764,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     private var trayRevision = -1
     private var trayPayload: [[String: Any]] = []
     private var lastSignature = ""
+    private var lastCounters = ""
     private var stateRevision = 0
 
     private var hasInternalPage: Bool {
@@ -1402,6 +1807,10 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         let servers = DevServerMonitor.shared.servers
         let downloads = FGDownloads.shared.snapshot()
 
+        // `revision` tells pages their *layout* changed (trays, servers, engines…).
+        // Ad-block counters tick constantly on busy sites; they used to be part of
+        // this signature, which made the landing page tear down and rebuild every
+        // shortcut tile every 1.5s and swallowed clicks mid-press.
         let signature = [
             String(historyRevision),
             String(bookmarkRevision),
@@ -1409,19 +1818,25 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             SearchEngines.current.id,
             orientation.rawValue,
             servers.map { String($0.port) }.joined(separator: ","),
-            String(FGAdblock.shared.blockedCount),
             DevServerMonitor.showAll ? "all" : "dev",
-            String(downloads.count),
+            String(downloads.count)
+        ].joined(separator: "|")
+        let counters = [
+            String(FGAdblock.shared.blockedCount),
             String(StatsStore.shared.lifetimeBlocked),
-            String(FGAdblock.shared.blockedPopupCount)
+            String(FGAdblock.shared.blockedPopupCount),
+            downloads.map { String(describing: $0["percent"] ?? "") }.joined(separator: ",")
         ].joined(separator: "|")
 
-        if signature != lastSignature {
+        let layoutChanged = signature != lastSignature
+        if layoutChanged {
             lastSignature = signature
             stateRevision += 1
-        } else if !force {
+        }
+        if !layoutChanged && counters == lastCounters && !force {
             return
         }
+        lastCounters = counters
 
         store.setValue(SearchEngines.all.map { ["id": $0.id, "name": $0.name] }, forStateKey: "searchEngines")
         store.setValue(SearchEngines.current.id, forStateKey: "currentSearchEngine")
@@ -1469,6 +1884,7 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
             tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         }
         if tab === selectedTab { updateToolbarState() }
+        scheduleSessionSave()
     }
 
     func browserView(_ view: FGBrowserView, didUpdateFindMatchCount count: Int, active activeOrdinal: Int) {
@@ -1488,13 +1904,19 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
         if !isPrivate { HistoryStore.shared.record(url: tab.url, title: title) }
         tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         if tab === selectedTab { updateToolbarState() }
+        scheduleSessionSave()
     }
 
     func browserView(_ view: FGBrowserView, didChangeLoading loading: Bool, canGoBack: Bool, canGoForward: Bool) {
         guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
+        let finished = tab.isLoading && !loading
         tab.isLoading = loading
         tab.canGoBack = canGoBack
         tab.canGoForward = canGoForward
+        if tab === selectedTab { progressView.set(progress: loading ? 0.1 : 1, loading: loading) }
+        if finished, tab.url.hasPrefix("http"), !HiddenElements.selectors(for: tab.url).isEmpty {
+            view.executeJavaScript(HiddenElements.injectionScript(for: tab.url))
+        }
         tabStrip.update(with: tabs, groups: groups, selectedIndex: selectedIndex)
         if tab === selectedTab { updateToolbarState() }
     }
@@ -1508,6 +1930,132 @@ final class BrowserWindowController: NSWindowController, FGBrowserViewDelegate, 
     }
 
     func browserView(_ view: FGBrowserView, didRequestNewTabWithURL url: String, disposition: FGNavigationDisposition) {
-        newTab(url: url, select: disposition != .newBackgroundTab)
+        let opener = tabs.first { $0.browserView === view }
+        switch disposition {
+        case .newWindow:
+            open(url, in: .newWindow)
+        case .newPrivateWindow:
+            open(url, in: .privateWindow)
+        default:
+            newTab(url: url, select: disposition != .newBackgroundTab, fromOpener: opener)
+        }
+    }
+
+    func browserView(_ view: FGBrowserView, requestsContextMenuWithParams params: [String: Any]) {
+        guard let tab = tabs.first(where: { $0.browserView === view }), tab === selectedTab,
+              let window else { return }
+        // CEF's x/y are device pixels on Retina in recent Chromium; the real mouse
+        // position in view points (top-left origin) is what the DOM and DevTools want.
+        var params = params
+        let mouse = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if view.bounds.contains(mouse) {
+            params["x"] = mouse.x
+            params["y"] = view.isFlipped ? mouse.y : view.bounds.height - mouse.y
+        }
+        let present: ([String: Any]?) -> Void = { [weak self] video in
+            guard let self, let window = self.window else { return }
+            let menu = PageContextMenu.build(for: params, tab: tab, host: self, overlaidVideo: video)
+            let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            menu.popUp(positioning: nil, at: point, in: view)
+        }
+        let mediaType = (params["mediaType"] as? NSNumber)?.intValue ?? 0
+        let page = params["pageURL"] as? String ?? ""
+        guard mediaType == 0, page.hasPrefix("http") else { present(nil); return }
+        let css = PageContextMenu.cssPointForProbe(params, in: view)
+        view.evaluate(PageContextMenu.videoProbeScript(at: css)) { result in
+            present(result as? [String: Any])
+        }
+    }
+
+    func browserView(_ view: FGBrowserView, didChangeContentFullscreen fullscreen: Bool) {
+        guard let tab = tabs.first(where: { $0.browserView === view }), let window else { return }
+        if fullscreen {
+            fullscreenTabID = tab.id
+            if tab !== selectedTab { selectTab(id: tab.id) }
+            hideFindBar()
+            suggestionsView.dismiss()
+            statusBubble.isHidden = true
+            chrome.isImmersive = true
+            if !window.styleMask.contains(.fullScreen) {
+                enteredWindowFullscreenForContent = true
+                window.toggleFullScreen(nil)
+            }
+        } else {
+            guard fullscreenTabID == tab.id else { return }
+            fullscreenTabID = nil
+            chrome.isImmersive = false
+            if enteredWindowFullscreenForContent, window.styleMask.contains(.fullScreen) {
+                enteredWindowFullscreenForContent = false
+                window.toggleFullScreen(nil)
+            }
+            refreshChrome()
+        }
+    }
+
+    func browserView(_ view: FGBrowserView, didChangeLoadProgress progress: Double) {
+        guard view === selectedTab?.browserView else { return }
+        progressView.set(progress: progress, loading: view.isLoading)
+    }
+
+    func browserView(_ view: FGBrowserView, didChangeStatusText text: String) {
+        guard view === selectedTab?.browserView, !chrome.isImmersive else { return }
+        statusBubble.show(ForgeURL.display(for: text), in: contentContainer)
+    }
+}
+
+// MARK: - Page context menu
+
+extension BrowserWindowController: PageContextMenuHost {
+
+    var isPrivateWindow: Bool { isPrivate }
+
+    func open(_ url: String, in destination: LinkDestination) {
+        switch destination {
+        case .foregroundTab:
+            newTab(url: url, select: true, fromOpener: selectedTab)
+        case .backgroundTab:
+            newTab(url: url, select: false, fromOpener: selectedTab)
+        case .newWindow:
+            (NSApp.delegate as? ForgeAppDelegate)?.openWindow(with: url, isPrivate: isPrivate)
+        case .privateWindow:
+            (NSApp.delegate as? ForgeAppDelegate)?.presentPrivateWindow(with: url)
+        }
+    }
+
+    func searchWeb(for text: String, background: Bool) {
+        newTab(url: SearchEngines.current.url(for: text), select: !background, fromOpener: selectedTab)
+    }
+
+    func toggleBookmark(url: String, title: String) {
+        BookmarkStore.shared.toggle(title: title.isEmpty ? url : title, url: url)
+        pushState(force: true)
+    }
+
+    func isBookmarked(url: String) -> Bool {
+        BookmarkStore.shared.all.contains { $0.url == url }
+    }
+
+    func addShortcut(url: String, title: String, tray: String?) {
+        Trays.addSite(title: title, url: url, tray: tray)
+        pushState(force: true)
+    }
+
+    func hideElement(in view: FGBrowserView, atCSS point: NSPoint) {
+        guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
+        let page = tab.url
+        view.evaluate(HiddenElements.pickScript(at: point.x, point.y)) { result in
+            guard let selector = result as? String, !selector.isEmpty else { NSSound.beep(); return }
+            HiddenElements.add(selector, for: page)
+        }
+    }
+
+    func restoreHiddenElements(in view: FGBrowserView) {
+        guard let tab = tabs.first(where: { $0.browserView === view }) else { return }
+        HiddenElements.clear(for: tab.url)
+        view.reload()
+    }
+
+    func hasHiddenElements(for url: String) -> Bool {
+        !HiddenElements.selectors(for: url).isEmpty
     }
 }

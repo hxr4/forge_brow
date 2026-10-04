@@ -14,6 +14,7 @@
 #include "include/cef_registration.h"
 #include "include/cef_find_handler.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_context_menu_handler.h"
 
 @class FGBrowserView;
 
@@ -25,12 +26,13 @@ class FGClient : public CefClient,
                  public CefResourceRequestHandler,
                  public CefKeyboardHandler,
                  public CefFindHandler,
-                 public CefDownloadHandler {
+                 public CefDownloadHandler,
+                 public CefContextMenuHandler {
  public:
   explicit FGClient(FGBrowserView* owner);
 
   void Detach();
-  void Evaluate(const std::string& expression, void (^completion)(id));
+  void Evaluate(const std::string& expression, void (^completion)(id), bool user_gesture = false);
   void AddDocumentStartScript(const std::string& source);
   void NoteRequest(const std::string& url, const char* type, bool blocked);
   NSArray<NSDictionary<NSString *, id> *>* CopyRequests() const;
@@ -38,6 +40,7 @@ class FGClient : public CefClient,
   void SetIgnoreCertificateErrors(bool value);
   bool ignore_certificate_errors() const;
   uint64_t blocked_count() const;
+  bool is_detached() const { return detached_.load(std::memory_order_relaxed); }
   CefRefPtr<CefBrowser> browser();
 
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -47,6 +50,23 @@ class FGClient : public CefClient,
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
   CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override { return this; }
+
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser,
+                      CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model,
+                      CefRefPtr<CefRunContextMenuCallback> callback) override;
+
+  bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefFrame> frame,
+                        const CefString& target_url,
+                        WindowOpenDisposition target_disposition,
+                        bool user_gesture) override;
+
+  void OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) override;
+  void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override;
+  void OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString& value) override;
 
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
                      CefRefPtr<CefFrame> frame,

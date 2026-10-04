@@ -32,6 +32,7 @@ final class Tab {
         set { browserView.setAudioMuted(newValue) }
     }
     var isLoading = false
+    private(set) var isDormant = false
     var canGoBack = false
     var canGoForward = false
 
@@ -55,6 +56,16 @@ final class Tab {
     }
 
     let isPrivate: Bool
+
+    func wake() {
+        isDormant = false
+    }
+
+    convenience init(restoring entry: SessionTab, isPrivate: Bool = false) {
+        self.init(url: entry.url, isPrivate: isPrivate)
+        self.title = entry.title
+        self.isDormant = true
+    }
 
     init(url: String, isPrivate: Bool = false) {
         self.url = url

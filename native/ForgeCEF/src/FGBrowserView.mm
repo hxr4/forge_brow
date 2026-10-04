@@ -6,6 +6,8 @@
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
 #include "include/cef_request_context.h"
+#include "include/cef_image.h"
+#include "include/cef_values.h"
 
 #import "FGSchemeHandler.h"
 #include "include/internal/cef_types_mac.h"
@@ -28,6 +30,8 @@
   BOOL _isLoading;
   BOOL _canGoBack;
   BOOL _canGoForward;
+  BOOL _contentFullscreen;
+  NSUInteger _createAttempts;
 }
 
 static NSString* gDocumentStartScript = nil;
@@ -41,6 +45,37 @@ static NSString* gDocumentStartScript = nil;
 }
 
 namespace {
+
+class FGImageCallback : public CefDownloadImageCallback {
+ public:
+  explicit FGImageCallback(void (^completion)(NSImage*)) : completion_([completion copy]) {}
+
+  void OnDownloadImageFinished(const CefString& image_url,
+                               int http_status_code,
+                               CefRefPtr<CefImage> image) override {
+    NSData* data = nil;
+    if (image) {
+      int width = 0;
+      int height = 0;
+      CefRefPtr<CefBinaryValue> png = image->GetAsPNG(1.0f, true, width, height);
+      if (png && png->GetSize() > 0) {
+        NSMutableData* bytes = [NSMutableData dataWithLength:png->GetSize()];
+        if (png->GetData(bytes.mutableBytes, bytes.length, 0) == bytes.length) {
+          data = bytes;
+        }
+      }
+    }
+    void (^completion)(NSImage*) = completion_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NSImage* result = data ? [[NSImage alloc] initWithData:data] : nil;
+      completion(result.isValid ? result : nil);
+    });
+  }
+
+ private:
+  void (^completion_)(NSImage*);
+  IMPLEMENT_REFCOUNTING(FGImageCallback);
+};
 
 CefRefPtr<CefRequestContext> PrivateRequestContext() {
   static CefRefPtr<CefRequestContext> context;
@@ -83,6 +118,7 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
 }
 
 - (void)createBrowser {
+  _createAttempts += 1;
   _client = new FGClient(self);
   _client->SetIgnoreCertificateErrors((_bypassOptions & FGBypassOptionsCertificateErrors) != 0);
 
@@ -98,9 +134,30 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
   CefRefPtr<CefRequestContext> context =
       _privateBrowsing ? PrivateRequestContext() : nullptr;
 
-  CefBrowserHost::CreateBrowser(window_info, _client.get(),
-                                CefString(_pendingURL.UTF8String), settings,
-                                nullptr, context);
+  const bool created = CefBrowserHost::CreateBrowser(window_info, _client.get(),
+                                                     CefString(_pendingURL.UTF8String), settings,
+                                                     nullptr, context);
+
+  // A tab whose browser never arrives is dead for good (reload is a no-op), so
+  // retry a refused or lost creation a couple of times. A late arrival from an
+  // abandoned attempt closes itself in FGClient::OnAfterCreated.
+  CefRefPtr<FGClient> pending = _client;
+  __weak FGBrowserView* weakSelf = self;
+  const NSUInteger attempt = _createAttempts;
+  const double delay = created ? 5.0 : 0.25;
+  if (!created) {
+    NSLog(@"[forge] CreateBrowser refused for %@ (attempt %lu)", _pendingURL, (unsigned long)attempt);
+  }
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    FGBrowserView* strong = weakSelf;
+    if (!strong || attempt >= 3 || strong->_client.get() != pending.get() || pending->is_detached() ||
+        pending->browser() || !strong.window) {
+      return;
+    }
+    NSLog(@"[forge] browser for %@ never arrived; retrying", strong->_pendingURL);
+    pending->Detach();
+    [strong createBrowser];
+  });
 }
 
 - (CefRefPtr<CefBrowser>)cefBrowser {
@@ -291,6 +348,50 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
 - (void)editPaste { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->Paste(); }
 - (void)editSelectAll { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->SelectAll(); }
 
+- (void)editPasteAndMatchStyle { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->PasteAndMatchStyle(); }
+- (void)editDelete { CefRefPtr<CefBrowser> b = [self cefBrowser]; if (b) b->GetFocusedFrame()->Delete(); }
+
+- (BOOL)isContentFullscreen {
+  return _contentFullscreen;
+}
+
+- (void)exitContentFullscreen {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (browser && browser->GetHost()->IsFullscreen()) {
+    browser->GetHost()->ExitFullscreen(true);
+  }
+}
+
+- (void)startDownload:(NSString *)url {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (browser && url.length > 0) {
+    browser->GetHost()->StartDownload(CefString(url.UTF8String));
+  }
+}
+
+- (void)downloadImage:(NSString *)url completion:(void (^)(NSImage *))completion {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (!browser || url.length == 0) {
+    if (completion) {
+      completion(nil);
+    }
+    return;
+  }
+  browser->GetHost()->DownloadImage(CefString(url.UTF8String), false, 0, false,
+                                    new FGImageCallback(completion ?: ^(NSImage*) {}));
+}
+
+- (void)showDevToolsInspectingPoint:(NSPoint)point {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (!browser) {
+    return;
+  }
+  CefWindowInfo window_info;
+  CefBrowserSettings settings;
+  browser->GetHost()->ShowDevTools(window_info, nullptr, settings,
+                                   CefPoint(static_cast<int>(point.x), static_cast<int>(point.y)));
+}
+
 - (void)setAudioMuted:(BOOL)muted {
   CefRefPtr<CefBrowser> browser = [self cefBrowser];
   if (browser) {
@@ -335,6 +436,23 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
     return;
   }
   _client->Evaluate(std::string(expression.UTF8String), completion);
+}
+
+- (void)evaluateUserAction:(NSString *)expression completion:(void (^)(id))completion {
+  if (!_client || expression.length == 0) {
+    if (completion) {
+      completion(nil);
+    }
+    return;
+  }
+  _client->Evaluate(std::string(expression.UTF8String), completion, true);
+}
+
+- (void)replaceMisspelling:(NSString *)word {
+  CefRefPtr<CefBrowser> browser = [self cefBrowser];
+  if (browser && word.length > 0) {
+    browser->GetHost()->ReplaceMisspelling(CefString(word.UTF8String));
+  }
 }
 
 - (void)closeBrowser {
@@ -424,6 +542,38 @@ CefRefPtr<CefRequestContext> PrivateRequestContext() {
   id<FGBrowserViewDelegate> delegate = self.browserDelegate;
   if ([delegate respondsToSelector:@selector(browserViewDidUpdateBlockCount:)]) {
     [delegate browserViewDidUpdateBlockCount:self];
+  }
+}
+
+- (void)handleContextMenu:(NSDictionary *)params {
+  id<FGBrowserViewDelegate> delegate = self.browserDelegate;
+  if ([delegate respondsToSelector:@selector(browserView:requestsContextMenuWithParams:)]) {
+    [delegate browserView:self requestsContextMenuWithParams:params];
+  }
+}
+
+- (void)handleContentFullscreen:(BOOL)fullscreen {
+  if (_contentFullscreen == fullscreen) {
+    return;
+  }
+  _contentFullscreen = fullscreen;
+  id<FGBrowserViewDelegate> delegate = self.browserDelegate;
+  if ([delegate respondsToSelector:@selector(browserView:didChangeContentFullscreen:)]) {
+    [delegate browserView:self didChangeContentFullscreen:fullscreen];
+  }
+}
+
+- (void)handleLoadProgress:(double)progress {
+  id<FGBrowserViewDelegate> delegate = self.browserDelegate;
+  if ([delegate respondsToSelector:@selector(browserView:didChangeLoadProgress:)]) {
+    [delegate browserView:self didChangeLoadProgress:progress];
+  }
+}
+
+- (void)handleStatusText:(NSString *)text {
+  id<FGBrowserViewDelegate> delegate = self.browserDelegate;
+  if ([delegate respondsToSelector:@selector(browserView:didChangeStatusText:)]) {
+    [delegate browserView:self didChangeStatusText:text];
   }
 }
 

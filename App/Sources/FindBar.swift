@@ -40,10 +40,16 @@ final class FindBar: NSView, NSTextFieldDelegate {
         countLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(countLabel)
 
-        let previous = makeButton("‹", action: #selector(handlePrevious))
-        let next = makeButton("›", action: #selector(handleNext))
-        let close = makeButton("✕", action: #selector(handleClose))
-        close.font = .systemFont(ofSize: 11, weight: .semibold)
+        let previous = ChromeButton(symbol: "chevron.up", label: "Previous Match (⇧⌘G)", pointSize: 11,
+                                    weight: .semibold, target: self, action: #selector(handlePrevious))
+        let next = ChromeButton(symbol: "chevron.down", label: "Next Match (⌘G)", pointSize: 11,
+                                weight: .semibold, target: self, action: #selector(handleNext))
+        let close = ChromeButton(symbol: "xmark", label: "Close (Esc)", pointSize: 10,
+                                 weight: .semibold, target: self, action: #selector(handleClose))
+        for button in [previous, next, close] {
+            button.widthAnchor.constraint(equalToConstant: 26).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        }
 
         let stack = NSStackView(views: [previous, next, close])
         stack.orientation = .horizontal
@@ -67,16 +73,6 @@ final class FindBar: NSView, NSTextFieldDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    private func makeButton(_ glyph: String, action: Selector) -> NSButton {
-        let button = NSButton(title: glyph, target: self, action: action)
-        button.isBordered = false
-        button.font = .systemFont(ofSize: 14)
-        button.contentTintColor = Theme.bone
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        return button
-    }
 
     var query: String { field.stringValue }
 

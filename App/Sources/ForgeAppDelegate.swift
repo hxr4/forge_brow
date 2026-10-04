@@ -5,14 +5,57 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var windowControllers: [BrowserWindowController] = []
 
+    private var hasFinishedLaunching = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        hasFinishedLaunching = true
         NSApp.setActivationPolicy(.regular)
         CustomRules.apply()
         FGBrowserView.documentStartScript =
             (ContentDefuse.isEnabled ? ContentDefuse.script : "") + AudioProbeScript.script
         buildMainMenu()
-        openNewWindow()
+
+        let store = SessionStore.shared
+        store.inspectMarkers()
+
+        if store.previousRestoreInterrupted {
+            NSLog("[forge] previous launch crashed while restoring; starting clean")
+            store.quarantineForCrashLoop()
+            openNewWindow()
+        } else if let snapshot = store.load(), !snapshot.windows.isEmpty {
+            if store.previousRunCrashed {
+                NSLog("[forge] previous run did not exit cleanly; restoring %ld window(s)",
+                      snapshot.windows.count)
+            }
+            store.beginRestore()
+            for saved in snapshot.windows {
+                let controller = BrowserWindowController(isPrivate: false, openHome: false)
+                controller.showWindow(nil)
+                windowControllers.append(controller)
+                controller.restore(saved)
+            }
+            store.endRestore()
+        } else {
+            openNewWindow()
+        }
+
+        store.markLaunched()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private var isTerminating = false
+
+    func windowDidClose(_ controller: BrowserWindowController) {
+        windowControllers.removeAll { $0 === controller }
+        scheduleSessionSave()
+    }
+
+    func scheduleSessionSave() {
+        guard !isTerminating else { return }
+        SessionStore.shared.schedule { [weak self] in
+            SessionSnapshot(version: 1, savedAt: Date(),
+                            windows: self?.windowControllers.compactMap { $0.sessionWindow() } ?? [])
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -41,12 +84,20 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        isTerminating = true
         HistoryStore.shared.flush()
+        SessionStore.shared.flush(
+            SessionSnapshot(version: 1, savedAt: Date(),
+                            windows: windowControllers.compactMap { $0.sessionWindow() }))
+        SessionStore.shared.markCleanExit()
         FGEngine.quitMessageLoop()
         return .terminateCancel
     }
 
+    /// main.mm calls this as a safety net. It can fire before launch finishes;
+    /// opening a window then stacked a blank one under every restored session.
     @objc func ensureWindow() {
+        guard hasFinishedLaunching else { return }
         if windowControllers.isEmpty {
             openNewWindow()
         }
@@ -63,6 +114,19 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller.showWindow(nil)
         windowControllers.append(controller)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func openWindow(with url: String, isPrivate: Bool) {
+        if isPrivate { presentPrivateWindow(with: url); return }
+        let controller = BrowserWindowController()
+        controller.showWindow(nil)
+        windowControllers.append(controller)
+        controller.navigate(to: url)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func selectTabNumber(_ sender: NSMenuItem) {
+        activeController?.selectTab(number: sender.tag)
     }
 
     func presentPrivateWindow(with url: String) {
@@ -299,6 +363,17 @@ final class ForgeAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.removeAllItems()
             menu.addItem(browserItem("Show Next Tab", "handleNextTab", "\t", [.control]))
             menu.addItem(browserItem("Show Previous Tab", "handlePreviousTab", "\t", [.control, .shift]))
+            menu.addItem(browserItem("Show Next Tab", "handleNextTab", "]", [.command, .shift]))
+            menu.addItem(browserItem("Show Previous Tab", "handlePreviousTab", "[", [.command, .shift]))
+            menu.addItem(.separator())
+            for number in 1...9 {
+                let entry = NSMenuItem(title: number == 9 ? "Select Last Tab" : "Select Tab \(number)",
+                                       action: #selector(selectTabNumber(_:)), keyEquivalent: String(number))
+                entry.keyEquivalentModifierMask = .command
+                entry.target = self
+                entry.tag = number
+                menu.addItem(entry)
+            }
             menu.addItem(.separator())
             menu.addItem(browserItem("New Group with This Tab", "handleNewTabGroup", "g", [.command, .shift]))
             menu.addItem(.separator())

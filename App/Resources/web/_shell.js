@@ -10,14 +10,14 @@ const fmtBytes = n => { if(!n) return '0 B'; const u=['B','KB','MB','GB']; let i
   while(v>=1024&&i<u.length-1){v/=1024;i++} return v.toFixed(v<10&&i>0?1:0)+' '+u[i]; };
 function shell(title){
   document.body.insertAdjacentHTML('afterbegin',
-    '<div class="page"><div class="top"><a class="home" href="/index.html">&#8592; Forge</a><h1>'+esc(title)+'</h1></div><div id="body"></div></div>');
+    '<div class="page"><div class="top"><a class="home" href="/index.html" aria-label="New Tab">&#8592;</a><h1>'+esc(title)+'</h1></div><div id="body"></div></div>');
   return document.getElementById('body');
 }
 
 function toolShell(title, note){
   document.body.classList.add('tool');
   document.body.insertAdjacentHTML('afterbegin',
-    '<div class="page"><div class="top"><a class="home" href="/index.html">&#8592; Forge</a>'
+    '<div class="page"><div class="top"><a class="home" href="/index.html" aria-label="New Tab">&#8592;</a>'
     + '<h1>'+esc(title)+'</h1></div>'
     + (note ? '<p style="color:var(--muted);font-size:12.5px;margin:-22px 0 22px">'+note+'</p>' : '')
     + '<div id="body"></div></div>');
@@ -31,3 +31,16 @@ function copyBtn(getText){
     ()=>{ b.textContent='Blocked'; setTimeout(()=>b.textContent='Copy',1200); });
   return b;
 }
+
+// Rows with data-url behave like links: click navigates, Cmd/middle-click opens
+// a background tab, and being real <a href> they get the full link context menu.
+function openFromPage(e){
+  const link = e.target.closest && e.target.closest('[data-url]');
+  if(!link || (e.type === 'auxclick' && e.button !== 1)) return;
+  e.preventDefault();
+  const url = link.dataset.url;
+  if(e.metaKey || e.button === 1) post('newTab', {url, background: !e.shiftKey});
+  else post('navigate', {url});
+}
+document.addEventListener('click', openFromPage);
+document.addEventListener('auxclick', openFromPage);

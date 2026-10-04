@@ -17,12 +17,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       const d = new Date(h.at);
       const day = d.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'});
       if(day !== lastDay){ out += '<div class="day">'+esc(day)+'</div>'; lastDay = day; }
-      out += '<div class="item"><span class="dot"></span><div class="meta" data-url="'+esc(h.url)+'">'
+      out += '<div class="item"><span class="dot"></span><a class="meta" href="'+esc(h.url)+'" data-url="'+esc(h.url)+'">'
            + '<div class="t">'+esc(h.title||h.url)+'</div><div class="u">'+esc(host(h.url))
-           + ' &middot; '+d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})+'</div></div></div>';
+           + ' &middot; '+d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})+'</div></a></div>';
     });
     list.innerHTML = out;
-    list.querySelectorAll('.meta').forEach(m => m.onclick = () => post('navigate',{url:m.dataset.url}));
   }
   render('');
   root.querySelector('#q').addEventListener('input', e => render(e.target.value));

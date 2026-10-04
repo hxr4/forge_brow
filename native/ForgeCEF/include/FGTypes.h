@@ -11,6 +11,8 @@ typedef NS_ENUM(NSInteger, FGNavigationDisposition) {
   FGNavigationDispositionCurrentTab,
   FGNavigationDispositionNewForegroundTab,
   FGNavigationDispositionNewBackgroundTab,
+  FGNavigationDispositionNewWindow,
+  FGNavigationDispositionNewPrivateWindow,
 };
 
 NS_ASSUME_NONNULL_END

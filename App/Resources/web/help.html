@@ -2,17 +2,25 @@
 <link rel="stylesheet" href="/forge.css"><script src="/_shell.js" defer></script></head><body>
 <script defer>
 window.addEventListener('DOMContentLoaded', () => {
-  const root = shell('Keyboard &amp; Help');
+  const root = shell('Shortcuts & help');
   const groups = [
     ['Navigation', [['&#8984;L','Focus address bar'],['&#8984;R','Reload'],['&#8984;&#8679;R','Force reload'],
       ['&#8984;[','Back'],['&#8984;]','Forward'],['&#8984;&#8679;H','Home'],['&#8984;.','Stop']]],
     ['Tabs & windows', [['&#8984;T','New tab'],['&#8984;W','Close tab'],['&#8984;&#8679;T','Reopen closed tab'],
-      ['&#8984;N','New window'],['&#8963;&#8677;','Next tab'],['&#8963;&#8679;&#8677;','Previous tab'],
-      ['&#8984;&#8679;E','Toggle vertical tabs']]],
+      ['&#8984;1 &ndash; &#8984;8','Go to tab'],['&#8984;9','Go to last tab'],
+      ['&#8984;&#8679;]','Next tab'],['&#8984;&#8679;[','Previous tab'],['&#8963;&#8677;','Next tab'],
+      ['&#8984;N','New window'],['&#8984;&#8679;N','New private window'],
+      ['&#8984;&#8679;E','Toggle vertical tabs'],['&#8963;&#8984;S','Toggle sidebar']]],
+    ['Mouse', [['&#8984;-click','Open link in a background tab'],['&#8984;&#8679;-click','Open link in a new tab and switch to it'],
+      ['Middle-click','Open link in background tab &middot; close a tab'],['&#8679;-click','Open link in a new window'],
+      ['Right-click','Link, image, video and text actions'],['Drag a tab','Reorder tabs'],
+      ['Right-click &rsaquo; Hide This Element','Remove an annoyance on a site, remembered per site']]],
     ['Page', [['&#8984;F','Find in page'],['&#8984;G','Find next'],['&#8984;0','Actual size'],
-      ['&#8984;+','Zoom in'],['&#8984;-','Zoom out'],['&#8984;P','Print'],['&#8984;D','Bookmark tab']]],
+      ['&#8984;+','Zoom in'],['&#8984;-','Zoom out'],['&#8984;P','Print'],['&#8984;D','Bookmark tab'],
+      ['&#8963;&#8984;F','Full screen'],['Esc','Leave video full screen']]],
     ['Developer', [['&#8984;K','Command palette'],['&#8997;&#8984;I','DevTools'],['&#8997;&#8984;U','View source'],
-      ['&#8984;Y','History'],['&#8997;&#8984;B','Bookmarks'],['&#8984;&#8679;J','Downloads'],['&#8984;,','Settings']]]
+      ['&#8997;&#8984;S','Stats for nerds'],['&#8984;Y','History'],['&#8997;&#8984;B','Bookmarks'],
+      ['&#8984;&#8679;J','Downloads'],['&#8984;,','Settings']]]
   ];
   root.innerHTML = groups.map(g =>
     '<div class="sect"><h2>'+g[0]+'</h2><div class="card">' + g[1].map(k =>

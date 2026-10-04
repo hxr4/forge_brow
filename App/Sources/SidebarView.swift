@@ -184,8 +184,8 @@ final class SidebarListView: NSView {
     func header(at index: Int) -> NSTextField {
         while headers.count <= index {
             let label = NSTextField(labelWithString: "")
-            label.font = .systemFont(ofSize: 9.5, weight: .heavy)
-            label.textColor = Theme.mossDeep
+            label.font = .systemFont(ofSize: 11, weight: .semibold)
+            label.textColor = Theme.muted
             addSubview(label)
             headers.append(label)
         }
@@ -255,8 +255,16 @@ final class SidebarView: NSView {
     var onNewTab: (() -> Void)?
     var onLayoutChange: (() -> Void)?
 
-    private(set) var isOpen = false
-    private(set) var section: Section = .tabs
+    private static let openKey = "forge.sidebar.open"
+    private static let sectionKey = "forge.sidebar.section"
+
+    private(set) var isOpen = UserDefaults.standard.bool(forKey: SidebarView.openKey) {
+        didSet { UserDefaults.standard.set(isOpen, forKey: Self.openKey) }
+    }
+    private(set) var section: Section = Section(
+        rawValue: UserDefaults.standard.string(forKey: SidebarView.sectionKey) ?? "") ?? .tabs {
+        didSet { UserDefaults.standard.set(section.rawValue, forKey: Self.sectionKey) }
+    }
 
     private let rail = NSView()
     private let panel = NSView()
@@ -272,7 +280,19 @@ final class SidebarView: NSView {
     private var selectedIndex = 0
     private var filter = ""
 
-    var preferredWidth: CGFloat { Self.railWidth + (isOpen ? Self.panelWidth : 0) }
+    /// v2: the whole sidebar (rail included) is hidden until asked for.
+    /// Vertical tabs already list every tab beside the sidebar; don't repeat them.
+    var hidesTabsSection = false {
+        didSet {
+            guard hidesTabsSection != oldValue else { return }
+            railButtons[Section.tabs.rawValue]?.isHidden = hidesTabsSection
+            if hidesTabsSection && section == .tabs { section = .bookmarks }
+            needsLayout = true
+            rebuild()
+        }
+    }
+
+    var preferredWidth: CGFloat { isOpen ? Self.railWidth + Self.panelWidth : 0 }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -280,20 +300,22 @@ final class SidebarView: NSView {
 
         rail.wantsLayer = true
         rail.layer?.backgroundColor = Theme.ink.cgColor
+        rail.isHidden = !isOpen
+        layer?.masksToBounds = true
         addSubview(rail)
 
         panel.wantsLayer = true
         panel.layer?.masksToBounds = true
-        panel.layer?.backgroundColor = NSColor(rgb: 0x070806).cgColor
-        panel.isHidden = true
+        panel.layer?.backgroundColor = Theme.ink.cgColor
+        panel.isHidden = !isOpen
         addSubview(panel)
 
         divider.wantsLayer = true
         divider.layer?.backgroundColor = Theme.line.cgColor
         addSubview(divider)
 
-        titleLabel.font = .systemFont(ofSize: 10, weight: .heavy)
-        titleLabel.textColor = Theme.acid
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = Theme.cream
         panel.addSubview(titleLabel)
 
         searchField.isBezeled = false
@@ -359,12 +381,13 @@ final class SidebarView: NSView {
     @objc private func handleSection(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue, let picked = Section(rawValue: raw) else { return }
         if isOpen && section == picked {
-            isOpen = false
+            return
         } else {
             section = picked
             isOpen = true
         }
         panel.isHidden = !isOpen
+        rail.isHidden = !isOpen
         onLayoutChange?()
         rebuild()
     }
@@ -372,8 +395,18 @@ final class SidebarView: NSView {
     func toggle() {
         isOpen.toggle()
         panel.isHidden = !isOpen
+        rail.isHidden = !isOpen
         rebuild()
         updateRailHighlight()
+    }
+
+    func show(_ target: Section) {
+        section = target
+        isOpen = true
+        panel.isHidden = false
+        rail.isHidden = false
+        onLayoutChange?()
+        rebuild()
     }
 
     func update(tabs newTabs: [Tab], groups newGroups: [TabGroup], selectedIndex index: Int) {
@@ -385,7 +418,7 @@ final class SidebarView: NSView {
 
     private func rebuild() {
         guard isOpen else { return }
-        titleLabel.stringValue = section.title.uppercased()
+        titleLabel.stringValue = section.title
         searchField.isHidden = section == .downloads
 
         var plan: [(isHeader: Bool, index: Int)] = []
@@ -394,7 +427,7 @@ final class SidebarView: NSView {
 
         func addHeader(_ text: String) {
             let label = list.header(at: headerIndex)
-            label.stringValue = text.uppercased()
+            label.stringValue = text
             label.isHidden = false
             plan.append((true, headerIndex))
             headerIndex += 1
@@ -557,7 +590,7 @@ final class SidebarView: NSView {
         let order = ["home"] + Section.allCases.map { $0.rawValue } + ["settings"]
         var y = bounds.height - 44
         for key in order {
-            guard let button = railButtons[key] else { continue }
+            guard let button = railButtons[key], !button.isHidden else { continue }
             if key == "settings" {
                 button.frame = NSRect(x: 7, y: 12, width: 32, height: 32)
                 continue
@@ -566,7 +599,7 @@ final class SidebarView: NSView {
             y -= 38
         }
 
-        titleLabel.frame = NSRect(x: 14, y: panel.bounds.height - 26, width: 180, height: 13)
+        titleLabel.frame = NSRect(x: 14, y: panel.bounds.height - 28, width: 180, height: 17)
         let searchHeight: CGFloat = searchField.isHidden ? 0 : 26
         if !searchField.isHidden {
             searchField.frame = NSRect(x: 10, y: panel.bounds.height - 62,
